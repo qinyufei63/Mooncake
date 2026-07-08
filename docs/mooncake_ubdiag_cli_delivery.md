@@ -8,27 +8,79 @@
 
 ## 1. 一张图讲清楚三层分发
 
+这张图按一次构建链路来讲：CMake 先在 [FindUbDiag.cmake L13-L239](file:///D:/Code/Mooncake/mooncake-common/FindUbDiag.cmake#L13-L239) 里完成 L1/L2/L3 选择，再把选中的 layer 和 runtime 路径写进 manifest，最后由 [build_rpm.sh L184-L285、L428-L440](file:///D:/Code/Mooncake/scripts/build_rpm.sh#L184-L285) 按 manifest 打包。
+
 ```mermaid
-graph TB
-    Source["客户/研发拉取 Mooncake 源码"] --> CMake["CMake include FindUbDiag.cmake"]
-    CMake --> L1Check{"extern/ubdiag 存在?"}
-    L1Check -- "是" --> L1["L1 submodule<br/>build libubdiag.so + ubdiag CLI"]
-    L1Check -- "否" --> L2Check{"客户本地系统路径有 UbDiag?"}
-    L2Check -- "是" --> L2["L2 system package<br/>find_package + find_program"]
-    L2Check -- "否" --> L3["L3 mock<br/>no-op PerfPoint"]
+flowchart LR
+    Start["Mooncake CMake Configure<br/>include FindUbDiag.cmake<br/>L13-L24: 功能开关<br/>L26-L36: 写 RPM manifest"]
 
-    L1 --> Lib["UbDiag::ubdiag_lib"]
-    L2 --> Lib
-    L3 --> Lib
-    Lib --> Mooncake["Mooncake Store / Transfer Engine / Python binding"]
+    subgraph Select["三层分发选择"]
+        L1Gate{"L1: extern/ubdiag 存在?<br/>FindUbDiag.cmake L68"}
+        L2Gate{"L2: 系统路径有 UbDiag?<br/>FindUbDiag.cmake L160-L170"}
+        L3Gate["L3: mock fallback<br/>FindUbDiag.cmake L233-L239"]
+    end
 
-    L1 --> Manifest["mooncake_ubdiag_rpm.env"]
-    L2 --> Manifest
-    L3 --> Manifest
-    Manifest --> RPM["scripts/build_rpm.sh 按 layer 打包"]
-    RPM --> Runtime["Mooncake RPM"]
-    Runtime --> User["客户安装后直接使用 ubdiag"]
+    subgraph L1["L1 submodule: Mooncake 自带 UbDiag"]
+        L1Flags["打开同源能力<br/>L86: UBDIAG_BUILD_SHARED=ON<br/>L89: ENABLE_PERCENTILE=ON<br/>L92: ENABLE_PERFLOG=ON"]
+        L1Add["add_subdirectory(extern/ubdiag)<br/>FindUbDiag.cmake L101-L102"]
+        L1Cli["CLI 进默认构建<br/>mooncake_ubdiag_cli ALL<br/>FindUbDiag.cmake L137-L144"]
+        L1Manifest["manifest: layer=submodule<br/>CLI/lib/config 路径<br/>FindUbDiag.cmake L149-L155"]
+    end
+
+    subgraph L2["L2 system: 只消费客户本地 UbDiag"]
+        L2Pkg["find_package(UbDiag)<br/>标准系统路径<br/>FindUbDiag.cmake L160-L170"]
+        L2Cli["find_program(ubdiag)<br/>imported CLI target<br/>FindUbDiag.cmake L187-L203"]
+        L2Manifest["manifest: layer=system<br/>记录系统 CLI/lib/config<br/>FindUbDiag.cmake L211-L228"]
+    end
+
+    subgraph Package["RPM 打包"]
+        Env["读取 mooncake_ubdiag_rpm.env<br/>build_rpm.sh L184-L199"]
+        L1Pack["submodule: 拷贝 build tree 产物<br/>ubdiag + libubdiag.so* + config<br/>build_rpm.sh L201-L236"]
+        L2Pack["system: 拷贝客户系统产物<br/>ubdiag + libubdiag.so* + config<br/>build_rpm.sh L237-L282"]
+        Files["写入 RPM %files<br/>build_rpm.sh L428-L440"]
+    end
+
+    Runtime["客户安装 Mooncake RPM<br/>/usr/bin/ubdiag<br/>/usr/lib64/libubdiag.so*"]
+    Use["运行验证<br/>ubdiag start --perflog<br/>Mooncake benchmark<br/>ubdiag show/watch/history --csv"]
+
+    Start --> L1Gate
+    L1Gate -- "是" --> L1Flags --> L1Add --> L1Cli --> L1Manifest
+    L1Gate -- "否" --> L2Gate
+    L2Gate -- "是" --> L2Pkg --> L2Cli --> L2Manifest
+    L2Gate -- "否" --> L3Gate
+
+    L1Manifest --> Env
+    L2Manifest --> Env
+    L3Gate --> Env
+    Env --> L1Pack --> Files
+    Env --> L2Pack --> Files
+    Env --> Files
+    Files --> Runtime --> Use
+
+    classDef entry fill:#e8f2ff,stroke:#2b6cb0,stroke-width:1px,color:#172033;
+    classDef layer1 fill:#e8fff2,stroke:#2f855a,stroke-width:1px,color:#172033;
+    classDef layer2 fill:#fff7df,stroke:#b7791f,stroke-width:1px,color:#172033;
+    classDef layer3 fill:#f1f5f9,stroke:#64748b,stroke-width:1px,color:#172033;
+    classDef pack fill:#f4edff,stroke:#6b46c1,stroke-width:1px,color:#172033;
+    classDef run fill:#ffeef2,stroke:#c53030,stroke-width:1px,color:#172033;
+
+    class Start entry;
+    class L1Gate,L1Flags,L1Add,L1Cli,L1Manifest layer1;
+    class L2Gate,L2Pkg,L2Cli,L2Manifest layer2;
+    class L3Gate layer3;
+    class Env,L1Pack,L2Pack,Files pack;
+    class Runtime,Use run;
 ```
+
+图里的行号可以按这个顺序讲：
+
+| 图中节点 | 对应源码 | 讲解要点 |
+|---|---|---|
+| 入口开关与 manifest | [FindUbDiag.cmake L13-L36](file:///D:/Code/Mooncake/mooncake-common/FindUbDiag.cmake#L13-L36) | Mooncake 侧统一定义 CLI、shared、P99、PerfLog、PerfPoint-only 开关，并建立 CMake 到 RPM 的 manifest 协议 |
+| L1 submodule | [FindUbDiag.cmake L68-L155](file:///D:/Code/Mooncake/mooncake-common/FindUbDiag.cmake#L68-L155) | submodule 存在时，强制同源构建 `libubdiag.so` 和 `ubdiag` CLI，CLI 通过 `mooncake_ubdiag_cli ALL` 进入默认构建 |
+| L2 system | [FindUbDiag.cmake L160-L228](file:///D:/Code/Mooncake/mooncake-common/FindUbDiag.cmake#L160-L228) | 不提供 L2 package，只在客户本地系统路径找 `UbDiag::ubdiag_lib` 和 `ubdiag` CLI，并写入 manifest |
+| L3 mock | [FindUbDiag.cmake L233-L239](file:///D:/Code/Mooncake/mooncake-common/FindUbDiag.cmake#L233-L239) | 无 submodule、无系统 UbDiag 时走 no-op mock，不打包 UbDiag runtime |
+| RPM 打包 | [build_rpm.sh L184-L285](file:///D:/Code/Mooncake/scripts/build_rpm.sh#L184-L285)、[L428-L440](file:///D:/Code/Mooncake/scripts/build_rpm.sh#L428-L440) | 打包脚本读取 manifest，L1/L2 分别拷贝对应 CLI/lib/config，最终写入 `%files` |
 
 三层边界保持不变：
 
@@ -42,17 +94,17 @@ graph TB
 
 | 文件 | 讲什么 | 关键位置 |
 |---|---|---|
-| [mooncake-common/FindUbDiag.cmake](file:///D:/Code/Mooncake/mooncake-common/FindUbDiag.cmake) | 三层分发主逻辑、CLI target、RPM manifest | L13-L24、L26-L36、L68-L155、L160-L228、L233-L239 |
-| [scripts/build_rpm.sh](file:///D:/Code/Mooncake/scripts/build_rpm.sh) | RPM 按 manifest 打包 UbDiag CLI/lib/config | L184-L285、L428-L440 |
-| [extern/ubdiag/CMakeLists.txt](file:///D:/Code/Mooncake/extern/ubdiag/CMakeLists.txt) | UbDiag P99/PerfLog/shared/install 开关 | L11-L18、L44-L49、L179-L187 |
-| [extern/ubdiag/src/cli/CMakeLists.txt](file:///D:/Code/Mooncake/extern/ubdiag/src/cli/CMakeLists.txt) | `ubdiag` CLI target，包含 `csv_writer.cpp` | L1-L16 |
-| [mooncake-store/src/CMakeLists.txt](file:///D:/Code/Mooncake/mooncake-store/src/CMakeLists.txt) / [transfer_engine](file:///D:/Code/Mooncake/mooncake-transfer-engine/src/CMakeLists.txt) / [integration](file:///D:/Code/Mooncake/mooncake-integration/CMakeLists.txt) | Mooncake 业务模块统一链接 `UbDiag::ubdiag_lib` | Store L250-L252，Transfer L2/L50-L64，Integration L104-L106 |
+| [mooncake-common/FindUbDiag.cmake L13-L239](file:///D:/Code/Mooncake/mooncake-common/FindUbDiag.cmake#L13-L239) | 三层分发主逻辑、CLI target、RPM manifest | L13-L24、L26-L36、L68-L155、L160-L228、L233-L239 |
+| [scripts/build_rpm.sh L184-L285、L428-L440](file:///D:/Code/Mooncake/scripts/build_rpm.sh#L184-L285) | RPM 按 manifest 打包 UbDiag CLI/lib/config | L184-L285、L428-L440 |
+| [extern/ubdiag/CMakeLists.txt L11-L187](file:///D:/Code/Mooncake/extern/ubdiag/CMakeLists.txt#L11-L187) | UbDiag P99/PerfLog/shared/install 开关 | L11-L18、L44-L49、L179-L187 |
+| [extern/ubdiag/src/cli/CMakeLists.txt L1-L16](file:///D:/Code/Mooncake/extern/ubdiag/src/cli/CMakeLists.txt#L1-L16) | `ubdiag` CLI target，包含 `csv_writer.cpp` | L1-L16 |
+| [mooncake-store/src/CMakeLists.txt L250-L252](file:///D:/Code/Mooncake/mooncake-store/src/CMakeLists.txt#L250-L252) / [transfer_engine L2、L50-L64](file:///D:/Code/Mooncake/mooncake-transfer-engine/src/CMakeLists.txt#L50-L64) / [integration L104-L106](file:///D:/Code/Mooncake/mooncake-integration/CMakeLists.txt#L104-L106) | Mooncake 业务模块统一链接 `UbDiag::ubdiag_lib` | Store L250-L252，Transfer L2/L50-L64，Integration L104-L106 |
 
 ## 3. CMake 核心实现
 
 ### 3.1 顶层开关和 RPM manifest
 
-源码：[FindUbDiag.cmake](file:///D:/Code/Mooncake/mooncake-common/FindUbDiag.cmake)
+源码：[FindUbDiag.cmake L13-L36](file:///D:/Code/Mooncake/mooncake-common/FindUbDiag.cmake#L13-L36)
 
 本次新增的核心开关集中在文件开头：
 
@@ -134,7 +186,7 @@ L3 没有 CLI、没有 `.so`、没有 UbDiag runtime 分析能力，这一点上
 
 ## 4. RPM 打包改动
 
-源码：[scripts/build_rpm.sh](file:///D:/Code/Mooncake/scripts/build_rpm.sh)
+源码：[scripts/build_rpm.sh L184-L285](file:///D:/Code/Mooncake/scripts/build_rpm.sh#L184-L285)、[L428-L440](file:///D:/Code/Mooncake/scripts/build_rpm.sh#L428-L440)
 
 RPM 脚本现在读取 CMake 生成的 `mooncake_ubdiag_rpm.env`，按 `MOONCAKE_UBDIAG_LAYER` 处理：
 
@@ -162,7 +214,7 @@ ${UBDIAG_RPM_FILES}
 
 ## 5. UbDiag submodule 侧承接能力
 
-源码：[extern/ubdiag/CMakeLists.txt](file:///D:/Code/Mooncake/extern/ubdiag/CMakeLists.txt)、[extern/ubdiag/src/cli/CMakeLists.txt](file:///D:/Code/Mooncake/extern/ubdiag/src/cli/CMakeLists.txt)
+源码：[extern/ubdiag/CMakeLists.txt L11-L18、L44-L49、L179-L187](file:///D:/Code/Mooncake/extern/ubdiag/CMakeLists.txt#L11-L187)、[extern/ubdiag/src/cli/CMakeLists.txt L1-L16](file:///D:/Code/Mooncake/extern/ubdiag/src/cli/CMakeLists.txt#L1-L16)
 
 UbDiag submodule 已经具备本次需要的承接点：
 
@@ -205,6 +257,6 @@ target_link_libraries(ubdiag PRIVATE ubdiag_manager_lib)
 
 1. 先讲原问题：L1 submodule 以前只解决 `.so`，没有把同源 CLI 一起交付，客户还需要额外 CLI 包。
 2. 再讲方案：不改变三层分发，只在 L1/L2 补齐 CLI 和 RPM manifest，L3 保持 mock。
-3. 打开 [FindUbDiag.cmake](file:///D:/Code/Mooncake/mooncake-common/FindUbDiag.cmake)，讲 L1、L2、L3 三段。
-4. 打开 [build_rpm.sh](file:///D:/Code/Mooncake/scripts/build_rpm.sh)，讲 manifest 驱动的打包逻辑。
+3. 打开 [FindUbDiag.cmake L68-L155、L160-L228、L233-L239](file:///D:/Code/Mooncake/mooncake-common/FindUbDiag.cmake#L68-L155)，讲 L1、L2、L3 三段。
+4. 打开 [build_rpm.sh L184-L285、L428-L440](file:///D:/Code/Mooncake/scripts/build_rpm.sh#L184-L285)，讲 manifest 驱动的打包逻辑。
 5. 最后讲边界：L2 必须来自客户本地系统路径，L3 不提供 runtime，完整验证在 245/247 跑。
