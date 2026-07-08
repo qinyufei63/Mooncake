@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>UbDiag 子模块构建 target 代码导读</title>
+  <link rel="stylesheet" href="./codex_dark.css">
+</head>
+<body>
+  <main class="page">
+    <div class="eyebrow">Mooncake UbDiag Code Walkthrough</div>
+    <h1>UbDiag 子模块：shared SDK、CLI、P99/PerfLog/CSV 承接点</h1>
+    <p>覆盖源文件：<a href="../../extern/ubdiag/CMakeLists.txt">extern/ubdiag/CMakeLists.txt</a>、<a href="../../extern/ubdiag/src/sdk/CMakeLists.txt">extern/ubdiag/src/sdk/CMakeLists.txt</a>、<a href="../../extern/ubdiag/src/cli/CMakeLists.txt">extern/ubdiag/src/cli/CMakeLists.txt</a></p>
+    <div class="panel">
+      <p><span class="note">阅读重点：</span>Mooncake 侧通过 `FindUbDiag.cmake` 设置开关；UbDiag 子模块自身负责把这些开关转成宏、构建 `libubdiag.so`、构建 `ubdiag` CLI，并把 `csv_writer.cpp` 编入 CLI。</p>
+    </div>
+    <div class="legend">
+      <span class="badge new">本次集成依赖的能力</span>
+      <span class="badge key">UbDiag 原生 target</span>
+      <span class="badge scope">运行时/安装边界</span>
+    </div>
+
+    <table class="map">
+      <tr><th>源文件</th><th>行号</th><th>作用</th></tr>
+      <tr><td>extern/ubdiag/CMakeLists.txt</td><td>L11-L18</td><td>P99、PerfLog、shared library 等开关定义。</td></tr>
+      <tr><td>extern/ubdiag/CMakeLists.txt</td><td>L44-L49</td><td>把 P99/PerfLog 开关转为编译宏。</td></tr>
+      <tr><td>extern/ubdiag/src/sdk/CMakeLists.txt</td><td>L9-L20</td><td>根据 `UBDIAG_BUILD_SHARED` 生成 shared 或 static SDK。</td></tr>
+      <tr><td>extern/ubdiag/src/cli/CMakeLists.txt</td><td>L1-L16</td><td>定义 `ubdiag` CLI target，包含 `csv_writer.cpp`。</td></tr>
+      <tr><td>extern/ubdiag/CMakeLists.txt</td><td>L179-L187</td><td>UbDiag 原生安装 CLI 和默认配置的规则。</td></tr>
+    </table>
+
+    <h2>1. Feature flags and compile definitions</h2>
+    <div class="code-card">
+      <div class="code-title"><span>UbDiag feature options</span><span>extern/ubdiag/CMakeLists.txt L11-L18</span></div>
+      <table class="code">
+        <tr class="new"><td class="ln">11</td><td class="src">option(ENABLE_PERCENTILE "Enable P99/P999/P9999 percentile calculation" OFF)</td></tr>
+        <tr class="new"><td class="ln">12</td><td class="src">option(ENABLE_PERFLOG "Enable PerfLog timestamp logging" OFF)</td></tr>
+        <tr class="scope"><td class="ln">13</td><td class="src">option(ENABLE_MEMPOINT "Enable point-level memory observation (requires systemtap-sdt-dev)" ON)</td></tr>
+        <tr class="scope"><td class="ln">14</td><td class="src">option(ENABLE_OB_MEMORY "Enable OB memory allocation tracking via eBPF uprobe (Linux only)" ON)</td></tr>
+        <tr class="scope"><td class="ln">15</td><td class="src">option(ENABLE_OB_CACHE "Enable OB cache hit rate monitoring via perf_event (Linux only)" ON)</td></tr>
+        <tr class="scope"><td class="ln">16</td><td class="src">option(UBDIAG_ENABLE_CACHEPOINT "Enable CachePoint function-level cache monitoring (requires perf_event_open)" ON)</td></tr>
+        <tr><td class="ln">17</td><td class="src">option(UBDIAG_DEBUG_FRAMES "Enable frame resolution debug output" OFF)</td></tr>
+        <tr class="new"><td class="ln">18</td><td class="src">option(UBDIAG_BUILD_SHARED "Build ubdiag_lib as shared library (.so) instead of static (.a)" OFF)</td></tr>
+      </table>
+    </div>
+
+    <div class="code-card">
+      <div class="code-title"><span>Compile definitions</span><span>extern/ubdiag/CMakeLists.txt L44-L49</span></div>
+      <table class="code">
+        <tr class="new"><td class="ln">44</td><td class="src">if(ENABLE_PERCENTILE)</td></tr>
+        <tr class="new"><td class="ln">45</td><td class="src">    add_compile_definitions(UBDIAG_ENABLE_PERCENTILE)</td></tr>
+        <tr class="new"><td class="ln">46</td><td class="src">endif()</td></tr>
+        <tr class="new"><td class="ln">48</td><td class="src">if(ENABLE_PERFLOG)</td></tr>
+        <tr class="new"><td class="ln">49</td><td class="src">    add_compile_definitions(UBDIAG_ENABLE_PERFLOG)</td></tr>
+      </table>
+    </div>
+
+    <h2>2. SDK library target</h2>
+    <div class="code-card">
+      <div class="code-title"><span>libubdiag shared/static switch</span><span>extern/ubdiag/src/sdk/CMakeLists.txt L9-L20</span></div>
+      <table class="code">
+        <tr class="new"><td class="ln">9</td><td class="src">if(UBDIAG_BUILD_SHARED)</td></tr>
+        <tr class="new"><td class="ln">10</td><td class="src">    add_library(ubdiag_lib SHARED ${SDK_SOURCES} ${PLATFORM_SOURCES})</td></tr>
+        <tr><td class="ln">11</td><td class="src">else()</td></tr>
+        <tr><td class="ln">12</td><td class="src">    add_library(ubdiag_lib STATIC ${SDK_SOURCES} ${PLATFORM_SOURCES})</td></tr>
+        <tr><td class="ln">13</td><td class="src">endif()</td></tr>
+        <tr class="key"><td class="ln">15</td><td class="src">set_target_properties(ubdiag_lib PROPERTIES OUTPUT_NAME ubdiag)</td></tr>
+        <tr class="new"><td class="ln">18</td><td class="src">if(ENABLE_PERCENTILE)</td></tr>
+        <tr class="new"><td class="ln">19</td><td class="src">    target_compile_definitions(ubdiag_lib PUBLIC UBDIAG_ENABLE_PERCENTILE)</td></tr>
+        <tr class="new"><td class="ln">20</td><td class="src">endif()</td></tr>
+      </table>
+    </div>
+
+    <h2>3. CLI target and CSV writer</h2>
+    <div class="code-card">
+      <div class="code-title"><span>ubdiag executable target</span><span>extern/ubdiag/src/cli/CMakeLists.txt L1-L16</span></div>
+      <table class="code">
+        <tr class="key"><td class="ln">1</td><td class="src">set(CLI_SOURCES</td></tr>
+        <tr><td class="ln">2</td><td class="src">    "${CMAKE_CURRENT_SOURCE_DIR}/main.cpp"</td></tr>
+        <tr><td class="ln">3</td><td class="src">    "${CMAKE_CURRENT_SOURCE_DIR}/cli_config.cpp"</td></tr>
+        <tr class="new"><td class="ln">4</td><td class="src">    "${CMAKE_CURRENT_SOURCE_DIR}/csv_writer.cpp"</td></tr>
+        <tr><td class="ln">5</td><td class="src">    "${CMAKE_CURRENT_SOURCE_DIR}/display_engine.cpp"</td></tr>
+        <tr><td class="ln">6</td><td class="src">    "${CMAKE_CURRENT_SOURCE_DIR}/sort_spec.cpp"</td></tr>
+        <tr><td class="ln">7</td><td class="src">    "${CMAKE_CURRENT_SOURCE_DIR}/memstat_display.cpp"</td></tr>
+        <tr><td class="ln">8</td><td class="src">    "${CMAKE_CURRENT_SOURCE_DIR}/mempoint_display.cpp"</td></tr>
+        <tr><td class="ln">9</td><td class="src">    "${CMAKE_CURRENT_SOURCE_DIR}/cache_display.cpp"</td></tr>
+        <tr><td class="ln">10</td><td class="src">)</td></tr>
+        <tr class="key"><td class="ln">12</td><td class="src">add_executable(ubdiag ${CLI_SOURCES})</td></tr>
+        <tr class="key"><td class="ln">14</td><td class="src">target_include_directories(ubdiag PRIVATE "${CMAKE_SOURCE_DIR}/include" "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_SOURCE_DIR}/src")</td></tr>
+        <tr class="key"><td class="ln">16</td><td class="src">target_link_libraries(ubdiag PRIVATE ubdiag_manager_lib)</td></tr>
+      </table>
+    </div>
+
+    <h2>4. UbDiag native install rules</h2>
+    <div class="code-card">
+      <div class="code-title"><span>CLI and default config install</span><span>extern/ubdiag/CMakeLists.txt L179-L187</span></div>
+      <table class="code">
+        <tr class="key"><td class="ln">179</td><td class="src"># 安装 CLI 工具</td></tr>
+        <tr class="key"><td class="ln">180</td><td class="src">install(TARGETS ubdiag</td></tr>
+        <tr class="key"><td class="ln">181</td><td class="src">    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}</td></tr>
+        <tr class="key"><td class="ln">182</td><td class="src">)</td></tr>
+        <tr class="key"><td class="ln">184</td><td class="src"># 安装默认配置文件</td></tr>
+        <tr class="key"><td class="ln">185</td><td class="src">install(FILES config/ubdiag.conf.example</td></tr>
+        <tr class="key"><td class="ln">186</td><td class="src">    DESTINATION ${CMAKE_INSTALL_SYSCONFDIR}/ubdiag</td></tr>
+        <tr class="key"><td class="ln">187</td><td class="src">    RENAME ubdiag.conf</td></tr>
+      </table>
+    </div>
+  </main>
+</body>
+</html>

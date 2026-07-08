@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>build_rpm.sh UbDiag Runtime 打包代码导读</title>
+  <link rel="stylesheet" href="./codex_dark.css">
+</head>
+<body>
+  <main class="page">
+    <div class="eyebrow">Mooncake UbDiag Code Walkthrough</div>
+    <h1>build_rpm.sh：UbDiag CLI/lib/config 打进 Mooncake RPM</h1>
+    <p>源文件：<a href="../../scripts/build_rpm.sh">scripts/build_rpm.sh</a></p>
+    <div class="panel">
+      <p><span class="note">阅读重点：</span>RPM 打包脚本不再猜测 UbDiag 产物，而是读取 CMake 生成的 `mooncake_ubdiag_rpm.env`。L1 拷贝 vendored build output，L2 拷贝客户系统 UbDiag，L3 跳过 runtime。</p>
+    </div>
+    <div class="legend">
+      <span class="badge new">新增/本次交付关键</span>
+      <span class="badge key">打包关键路径</span>
+      <span class="badge scope">边界/保护</span>
+    </div>
+
+    <table class="map">
+      <tr><th>行号</th><th>作用</th><th>讲解口径</th></tr>
+      <tr><td>L80-L82</td><td>BUILDROOT 目录</td><td>新增 `/etc/ubdiag`，用于随 Mooncake RPM 安装默认配置。</td></tr>
+      <tr><td>L184-L199</td><td>读取 manifest</td><td>从 CMake 得到 layer/CLI/lib/config 路径。</td></tr>
+      <tr><td>L201-L236</td><td>L1 打包</td><td>把 submodule 同步编译出的 `ubdiag` 和 `libubdiag.so*` 打进 RPM。</td></tr>
+      <tr><td>L237-L285</td><td>L2 打包</td><td>只拷贝客户系统路径中的 CLI/lib/config，不提供 L2 system package。</td></tr>
+      <tr><td>L428-L440</td><td>`%files`</td><td>`UBDIAG_RPM_FILES` 将 UbDiag runtime 动态写入 RPM 文件列表。</td></tr>
+    </table>
+
+    <h2>1. Manifest 协议入口</h2>
+    <div class="code-card">
+      <div class="code-title"><span>BUILDROOT and manifest read</span><span>build_rpm.sh L80-L199</span></div>
+      <table class="code">
+        <tr class="new"><td class="ln">81</td><td class="src">    mkdir -p rpmbuild/BUILDROOT/${PACKAGE_NAME}-${PACKAGE_VERSION}-${PACKAGE_RELEASE}.${PLATFORM}/{usr/{bin,${LIB_DIR},include},etc/{mooncake,ubdiag}}</td></tr>
+        <tr class="new"><td class="ln">184</td><td class="src">    # UbDiag runtime artifacts. L1 packages the vendored build output. L2 packages</td></tr>
+        <tr class="new"><td class="ln">185</td><td class="src">    # the customer-provided system UbDiag selected by FindUbDiag.cmake. The CLI</td></tr>
+        <tr class="new"><td class="ln">186</td><td class="src">    # and libubdiag must come from the same layer so feature flags and shared</td></tr>
+        <tr class="new"><td class="ln">187</td><td class="src">    # memory layout stay in sync. Do not package UbDiag headers or CMake package</td></tr>
+        <tr class="scope"><td class="ln">188</td><td class="src">    # metadata here: Layer 2 must remain a customer-provided system package.</td></tr>
+        <tr class="new"><td class="ln">189</td><td class="src">    local UBDIAG_BUILD_DIR="${PLATFORM_BUILD_DIR}/extern/ubdiag_build"</td></tr>
+        <tr class="new"><td class="ln">190</td><td class="src">    local UBDIAG_RPM_MANIFEST="${PLATFORM_BUILD_DIR}/mooncake_ubdiag_rpm.env"</td></tr>
+        <tr class="new"><td class="ln">191</td><td class="src">    local MOONCAKE_UBDIAG_LAYER=""</td></tr>
+        <tr class="new"><td class="ln">192</td><td class="src">    local MOONCAKE_UBDIAG_CLI_PATH=""</td></tr>
+        <tr class="new"><td class="ln">193</td><td class="src">    local MOONCAKE_UBDIAG_LIBRARY_PATH=""</td></tr>
+        <tr class="new"><td class="ln">194</td><td class="src">    local MOONCAKE_UBDIAG_CONFIG_PATH=""</td></tr>
+        <tr class="new"><td class="ln">196</td><td class="src">    if [ -f "${UBDIAG_RPM_MANIFEST}" ]; then</td></tr>
+        <tr class="new"><td class="ln">197</td><td class="src">        echo "Reading UbDiag RPM manifest: ${UBDIAG_RPM_MANIFEST}"</td></tr>
+        <tr class="new"><td class="ln">198</td><td class="src">        . "${UBDIAG_RPM_MANIFEST}"</td></tr>
+        <tr class="new"><td class="ln">199</td><td class="src">    fi</td></tr>
+      </table>
+    </div>
+
+    <h2>2. L1：打包 submodule 同源产物</h2>
+    <div class="code-card">
+      <div class="code-title"><span>L1 vendored UbDiag runtime</span><span>build_rpm.sh L201-L236</span></div>
+      <table class="code">
+        <tr class="new"><td class="ln">201</td><td class="src">    if { [ -z "${MOONCAKE_UBDIAG_LAYER}" ] || [ "${MOONCAKE_UBDIAG_LAYER}" = "submodule" ]; } && [ -d "${UBDIAG_BUILD_DIR}" ]; then</td></tr>
+        <tr class="new"><td class="ln">202</td><td class="src">        echo "Copying vendored UbDiag CLI and SDK runtime library..."</td></tr>
+        <tr class="new"><td class="ln">204</td><td class="src">        if [ -f "${UBDIAG_BUILD_DIR}/src/cli/ubdiag" ]; then</td></tr>
+        <tr class="new"><td class="ln">205</td><td class="src">            cp "${UBDIAG_BUILD_DIR}/src/cli/ubdiag" rpmbuild/BUILDROOT/${PACKAGE_NAME}-${PACKAGE_VERSION}-${PACKAGE_RELEASE}.${PLATFORM}/usr/bin/</td></tr>
+        <tr class="new"><td class="ln">206</td><td class="src">            chmod 755 rpmbuild/BUILDROOT/${PACKAGE_NAME}-${PACKAGE_VERSION}-${PACKAGE_RELEASE}.${PLATFORM}/usr/bin/ubdiag</td></tr>
+        <tr class="new"><td class="ln">207</td><td class="src">            UBDIAG_RPM_FILES="${UBDIAG_RPM_FILES}</td></tr>
+        <tr class="new"><td class="ln">208</td><td class="src">/usr/bin/ubdiag"</td></tr>
+        <tr class="scope"><td class="ln">210</td><td class="src">            echo "Error: vendored UbDiag build found, but ${UBDIAG_BUILD_DIR}/src/cli/ubdiag is missing"</td></tr>
+        <tr class="scope"><td class="ln">211</td><td class="src">            return 1</td></tr>
+        <tr class="new"><td class="ln">214</td><td class="src">        if compgen -G "${UBDIAG_BUILD_DIR}/src/sdk/libubdiag.so*" >/dev/null; then</td></tr>
+        <tr class="new"><td class="ln">215</td><td class="src">            for ubdiag_lib in "${UBDIAG_BUILD_DIR}"/src/sdk/libubdiag.so*; do</td></tr>
+        <tr class="new"><td class="ln">216</td><td class="src">                cp "${ubdiag_lib}" rpmbuild/BUILDROOT/${PACKAGE_NAME}-${PACKAGE_VERSION}-${PACKAGE_RELEASE}.${PLATFORM}/usr/${LIB_DIR}/</td></tr>
+        <tr class="new"><td class="ln">219</td><td class="src">            UBDIAG_RPM_FILES="${UBDIAG_RPM_FILES}</td></tr>
+        <tr class="new"><td class="ln">220</td><td class="src">/usr/${LIB_DIR}/libubdiag.so*"</td></tr>
+        <tr class="new"><td class="ln">230</td><td class="src">        if [ -f extern/ubdiag/config/ubdiag.conf.example ]; then</td></tr>
+        <tr class="new"><td class="ln">231</td><td class="src">            cp extern/ubdiag/config/ubdiag.conf.example rpmbuild/BUILDROOT/${PACKAGE_NAME}-${PACKAGE_VERSION}-${PACKAGE_RELEASE}.${PLATFORM}/etc/ubdiag/ubdiag.conf</td></tr>
+        <tr class="new"><td class="ln">232</td><td class="src">            UBDIAG_RPM_FILES="${UBDIAG_RPM_FILES}</td></tr>
+        <tr class="new"><td class="ln">233</td><td class="src">%config(noreplace) /etc/ubdiag/ubdiag.conf"</td></tr>
+      </table>
+    </div>
+
+    <h2>3. L2：打包客户本地系统 UbDiag</h2>
+    <div class="code-card">
+      <div class="code-title"><span>L2 system UbDiag runtime</span><span>build_rpm.sh L237-L285</span></div>
+      <table class="code">
+        <tr class="new"><td class="ln">237</td><td class="src">    elif [ "${MOONCAKE_UBDIAG_LAYER}" = "system" ]; then</td></tr>
+        <tr class="new"><td class="ln">238</td><td class="src">        echo "Copying system UbDiag CLI and SDK runtime library selected by Layer 2..."</td></tr>
+        <tr class="scope"><td class="ln">240</td><td class="src">        if [ -z "${MOONCAKE_UBDIAG_CLI_PATH}" ] || [ ! -f "${MOONCAKE_UBDIAG_CLI_PATH}" ]; then</td></tr>
+        <tr class="scope"><td class="ln">241</td><td class="src">            echo "Error: Layer 2 selected system UbDiag, but ubdiag CLI was not found"</td></tr>
+        <tr class="scope"><td class="ln">243</td><td class="src">            return 1</td></tr>
+        <tr class="new"><td class="ln">246</td><td class="src">        cp "${MOONCAKE_UBDIAG_CLI_PATH}" rpmbuild/BUILDROOT/${PACKAGE_NAME}-${PACKAGE_VERSION}-${PACKAGE_RELEASE}.${PLATFORM}/usr/bin/ubdiag</td></tr>
+        <tr class="new"><td class="ln">248</td><td class="src">        UBDIAG_RPM_FILES="${UBDIAG_RPM_FILES}</td></tr>
+        <tr class="new"><td class="ln">249</td><td class="src">/usr/bin/ubdiag"</td></tr>
+        <tr class="new"><td class="ln">252</td><td class="src">        if [ -n "${MOONCAKE_UBDIAG_LIBRARY_PATH}" ] && [ -e "${MOONCAKE_UBDIAG_LIBRARY_PATH}" ]; then</td></tr>
+        <tr class="new"><td class="ln">253</td><td class="src">            UBDIAG_SYSTEM_LIB_DIR="$(dirname "${MOONCAKE_UBDIAG_LIBRARY_PATH}")"</td></tr>
+        <tr class="scope"><td class="ln">263</td><td class="src">        if [ -z "${UBDIAG_SYSTEM_LIB_DIR}" ] || ! compgen -G "${UBDIAG_SYSTEM_LIB_DIR}/libubdiag.so*" >/dev/null; then</td></tr>
+        <tr class="scope"><td class="ln">264</td><td class="src">            echo "Error: Layer 2 selected system UbDiag, but libubdiag.so* was not found"</td></tr>
+        <tr class="scope"><td class="ln">266</td><td class="src">            return 1</td></tr>
+        <tr class="new"><td class="ln">269</td><td class="src">        for ubdiag_lib in "${UBDIAG_SYSTEM_LIB_DIR}"/libubdiag.so*; do</td></tr>
+        <tr class="new"><td class="ln">270</td><td class="src">            cp -P "${ubdiag_lib}" rpmbuild/BUILDROOT/${PACKAGE_NAME}-${PACKAGE_VERSION}-${PACKAGE_RELEASE}.${PLATFORM}/usr/${LIB_DIR}/</td></tr>
+        <tr class="new"><td class="ln">273</td><td class="src">        UBDIAG_RPM_FILES="${UBDIAG_RPM_FILES}</td></tr>
+        <tr class="new"><td class="ln">274</td><td class="src">/usr/${LIB_DIR}/libubdiag.so*"</td></tr>
+        <tr class="new"><td class="ln">276</td><td class="src">        if [ -n "${MOONCAKE_UBDIAG_CONFIG_PATH}" ] && [ -f "${MOONCAKE_UBDIAG_CONFIG_PATH}" ]; then</td></tr>
+        <tr class="new"><td class="ln">277</td><td class="src">            cp "${MOONCAKE_UBDIAG_CONFIG_PATH}" rpmbuild/BUILDROOT/${PACKAGE_NAME}-${PACKAGE_VERSION}-${PACKAGE_RELEASE}.${PLATFORM}/etc/ubdiag/ubdiag.conf</td></tr>
+        <tr class="scope"><td class="ln">283</td><td class="src">    else</td></tr>
+        <tr class="scope"><td class="ln">284</td><td class="src">        echo "UbDiag layer is '${MOONCAKE_UBDIAG_LAYER:-unknown}', skipping UbDiag CLI packaging..."</td></tr>
+      </table>
+    </div>
+
+    <h2>4. RPM file list</h2>
+    <div class="code-card">
+      <div class="code-title"><span>%files includes dynamic UbDiag runtime entries</span><span>build_rpm.sh L428-L440</span></div>
+      <table class="code">
+        <tr><td class="ln">428</td><td class="src">%files</td></tr>
+        <tr><td class="ln">429</td><td class="src">/usr/bin/mooncake_master</td></tr>
+        <tr><td class="ln">430</td><td class="src">/usr/bin/mooncake_client</td></tr>
+        <tr><td class="ln">431</td><td class="src">/usr/bin/stress_cluster_bench</td></tr>
+        <tr><td class="ln">432</td><td class="src">/usr/bin/transfer_engine_bench</td></tr>
+        <tr><td class="ln">433</td><td class="src">/usr/${LIB_DIR}/libmooncake_store.so</td></tr>
+        <tr><td class="ln">434</td><td class="src">/usr/${LIB_DIR}/libtransfer_engine.so</td></tr>
+        <tr><td class="ln">435</td><td class="src">/usr/${LIB_DIR}/libmooncake_common.so</td></tr>
+        <tr><td class="ln">436</td><td class="src">/usr/${LIB_DIR}/libasio.so</td></tr>
+        <tr><td class="ln">437</td><td class="src">/usr/${LIB_DIR}/libetcd_wrapper.so</td></tr>
+        <tr><td class="ln">438</td><td class="src">/usr/${LIB_DIR}/libmooncake_engine.so</td></tr>
+        <tr><td class="ln">439</td><td class="src">/usr/${LIB_DIR}/libmooncake_store_python.so</td></tr>
+        <tr class="new"><td class="ln">440</td><td class="src">${UBDIAG_RPM_FILES}</td></tr>
+      </table>
+    </div>
+  </main>
+</body>
+</html>
