@@ -3,13 +3,13 @@
 <head>
   <meta charset="utf-8">
   <title>UbDiag 子模块构建 target 代码导读</title>
-  <link rel="stylesheet" href="./codex_dark.css">
+  <link rel="stylesheet" href="file:///D:/Code/Mooncake/docs/code_docs/codex_dark.css">
 </head>
 <body>
   <main class="page">
     <div class="eyebrow">Mooncake UbDiag Code Walkthrough</div>
     <h1>UbDiag 子模块：shared SDK、CLI、P99/PerfLog/CSV 承接点</h1>
-    <p>覆盖源文件：<a href="../../extern/ubdiag/CMakeLists.txt">extern/ubdiag/CMakeLists.txt</a>、<a href="../../extern/ubdiag/src/sdk/CMakeLists.txt">extern/ubdiag/src/sdk/CMakeLists.txt</a>、<a href="../../extern/ubdiag/src/cli/CMakeLists.txt">extern/ubdiag/src/cli/CMakeLists.txt</a></p>
+    <p>覆盖源文件：<a href="file:///D:/Code/Mooncake/extern/ubdiag/CMakeLists.txt">extern/ubdiag/CMakeLists.txt</a>、<a href="file:///D:/Code/Mooncake/extern/ubdiag/src/sdk/CMakeLists.txt">extern/ubdiag/src/sdk/CMakeLists.txt</a>、<a href="file:///D:/Code/Mooncake/extern/ubdiag/src/cli/CMakeLists.txt">extern/ubdiag/src/cli/CMakeLists.txt</a></p>
     <div class="panel">
       <p><span class="note">阅读重点：</span>Mooncake 侧通过 `FindUbDiag.cmake` 设置开关；UbDiag 子模块自身负责把这些开关转成宏、构建 `libubdiag.so`、构建 `ubdiag` CLI，并把 `csv_writer.cpp` 编入 CLI。</p>
     </div>

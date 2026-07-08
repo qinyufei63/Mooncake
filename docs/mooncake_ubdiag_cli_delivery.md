@@ -81,10 +81,10 @@ graph TB
 
 | 流程节点 | 代码导读 | 覆盖源码与行号 |
 |---|---|---|
-| 三层分发决策、L1/L2/L3 选择、CLI target 接入、RPM manifest 输出 | [FindUbDiag.cmake 三层分发与 CLI 集成](./code_docs/findubdiag_three_layer_cli.html) | `mooncake-common/FindUbDiag.cmake`：L13-L24、L26-L36、L81-L102、L137-L155、L160-L228、L233-L239 |
-| Mooncake RPM 打包 UbDiag CLI、`libubdiag.so*`、配置文件 | [build_rpm.sh UbDiag Runtime 打包](./code_docs/rpm_ubdiag_runtime_packaging.html) | `scripts/build_rpm.sh`：L80-L82、L184-L199、L201-L236、L237-L285、L428-L440 |
-| UbDiag 子模块如何承接 shared SDK、P99、PerfLog、CSV CLI | [UbDiag 子模块构建 target](./code_docs/ubdiag_submodule_build_targets.html) | `extern/ubdiag/CMakeLists.txt`、`extern/ubdiag/src/sdk/CMakeLists.txt`、`extern/ubdiag/src/cli/CMakeLists.txt` |
-| Mooncake 业务模块如何无感消费三层分发 target | [Mooncake UbDiag Consumer Targets](./code_docs/mooncake_ubdiag_consumers.html) | `mooncake-store/src/CMakeLists.txt`、`mooncake-transfer-engine/src/CMakeLists.txt`、`mooncake-integration/CMakeLists.txt` |
+| 三层分发决策、L1/L2/L3 选择、CLI target 接入、RPM manifest 输出 | [FindUbDiag.cmake 三层分发与 CLI 集成](file:///D:/Code/Mooncake/docs/code_docs/findubdiag_three_layer_cli.html) | `mooncake-common/FindUbDiag.cmake`：L13-L24、L26-L36、L81-L102、L137-L155、L160-L228、L233-L239 |
+| Mooncake RPM 打包 UbDiag CLI、`libubdiag.so*`、配置文件 | [build_rpm.sh UbDiag Runtime 打包](file:///D:/Code/Mooncake/docs/code_docs/rpm_ubdiag_runtime_packaging.html) | `scripts/build_rpm.sh`：L80-L82、L184-L199、L201-L236、L237-L285、L428-L440 |
+| UbDiag 子模块如何承接 shared SDK、P99、PerfLog、CSV CLI | [UbDiag 子模块构建 target](file:///D:/Code/Mooncake/docs/code_docs/ubdiag_submodule_build_targets.html) | `extern/ubdiag/CMakeLists.txt`、`extern/ubdiag/src/sdk/CMakeLists.txt`、`extern/ubdiag/src/cli/CMakeLists.txt` |
+| Mooncake 业务模块如何无感消费三层分发 target | [Mooncake UbDiag Consumer Targets](file:///D:/Code/Mooncake/docs/code_docs/mooncake_ubdiag_consumers.html) | `mooncake-store/src/CMakeLists.txt`、`mooncake-transfer-engine/src/CMakeLists.txt`、`mooncake-integration/CMakeLists.txt` |
 
 ```
 Mooncake cmake configure

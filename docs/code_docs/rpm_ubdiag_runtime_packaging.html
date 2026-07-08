@@ -3,13 +3,13 @@
 <head>
   <meta charset="utf-8">
   <title>build_rpm.sh UbDiag Runtime 打包代码导读</title>
-  <link rel="stylesheet" href="./codex_dark.css">
+  <link rel="stylesheet" href="file:///D:/Code/Mooncake/docs/code_docs/codex_dark.css">
 </head>
 <body>
   <main class="page">
     <div class="eyebrow">Mooncake UbDiag Code Walkthrough</div>
     <h1>build_rpm.sh：UbDiag CLI/lib/config 打进 Mooncake RPM</h1>
-    <p>源文件：<a href="../../scripts/build_rpm.sh">scripts/build_rpm.sh</a></p>
+    <p>源文件：<a href="file:///D:/Code/Mooncake/scripts/build_rpm.sh">scripts/build_rpm.sh</a></p>
     <div class="panel">
       <p><span class="note">阅读重点：</span>RPM 打包脚本不再猜测 UbDiag 产物，而是读取 CMake 生成的 `mooncake_ubdiag_rpm.env`。L1 拷贝 vendored build output，L2 拷贝客户系统 UbDiag，L3 跳过 runtime。</p>
     </div>

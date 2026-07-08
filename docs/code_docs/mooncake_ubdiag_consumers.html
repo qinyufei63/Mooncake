@@ -3,13 +3,13 @@
 <head>
   <meta charset="utf-8">
   <title>Mooncake UbDiag Consumer Targets 代码导读</title>
-  <link rel="stylesheet" href="./codex_dark.css">
+  <link rel="stylesheet" href="file:///D:/Code/Mooncake/docs/code_docs/codex_dark.css">
 </head>
 <body>
   <main class="page">
     <div class="eyebrow">Mooncake UbDiag Code Walkthrough</div>
     <h1>Mooncake 消费侧：统一链接 UbDiag::ubdiag_lib</h1>
-    <p>覆盖源文件：<a href="../../mooncake-store/src/CMakeLists.txt">mooncake-store/src/CMakeLists.txt</a>、<a href="../../mooncake-transfer-engine/src/CMakeLists.txt">mooncake-transfer-engine/src/CMakeLists.txt</a>、<a href="../../mooncake-integration/CMakeLists.txt">mooncake-integration/CMakeLists.txt</a></p>
+    <p>覆盖源文件：<a href="file:///D:/Code/Mooncake/mooncake-store/src/CMakeLists.txt">mooncake-store/src/CMakeLists.txt</a>、<a href="file:///D:/Code/Mooncake/mooncake-transfer-engine/src/CMakeLists.txt">mooncake-transfer-engine/src/CMakeLists.txt</a>、<a href="file:///D:/Code/Mooncake/mooncake-integration/CMakeLists.txt">mooncake-integration/CMakeLists.txt</a></p>
     <div class="panel">
       <p><span class="note">阅读重点：</span>三层分发对 Mooncake 业务模块保持无感。每个模块只 include `FindUbDiag.cmake`，然后链接统一 target `UbDiag::ubdiag_lib`；具体命中 L1/L2/L3 由 FindUbDiag.cmake 负责。</p>
     </div>
