@@ -29,6 +29,8 @@
       <tr><td>L233-L239</td><td>L3 mock fallback</td><td>无 UbDiag 环境仍可编译，RPM 不打包 UbDiag runtime。</td></tr>
     </table>
 
+    <span id="L13-L24"></span>
+    <span id="L26-L36"></span>
     <h2>1. 交付开关与 RPM manifest</h2>
     <div class="code-card">
       <div class="code-title"><span>Mooncake UbDiag options</span><span>FindUbDiag.cmake L13-L24</span></div>
@@ -65,7 +67,15 @@
       </table>
     </div>
 
+    <span id="L68"></span>
+    <span id="L69-L84"></span>
+    <span id="L104-L117"></span>
+    <span id="L85-L99"></span>
+    <span id="L101-L102"></span>
     <h2>2. L1 submodule：CLI 与 .so 同源构建</h2>
+    <span id="L119-L141"></span>
+    <span id="L137-L144"></span>
+    <span id="L149-L155"></span>
     <div class="code-card">
       <div class="code-title"><span>L1 feature flags before add_subdirectory</span><span>FindUbDiag.cmake L81-L102</span></div>
       <table class="code">
@@ -114,6 +124,11 @@
       </table>
     </div>
 
+    <span id="L160-L170"></span>
+    <span id="L38-L63"></span>
+    <span id="L171-L180"></span>
+    <span id="L187-L203"></span>
+    <span id="L211-L228"></span>
     <h2>3. L2 system package：只消费客户本地 UbDiag</h2>
     <div class="code-card">
       <div class="code-title"><span>L2 standard-path lookup</span><span>FindUbDiag.cmake L160-L170</span></div>
@@ -156,6 +171,7 @@
       </table>
     </div>
 
+    <span id="L233-L239"></span>
     <h2>4. L3 mock fallback</h2>
     <div class="code-card">
       <div class="code-title"><span>L3 no-op path</span><span>FindUbDiag.cmake L233-L239</span></div>

@@ -28,6 +28,8 @@
       <tr><td>L428-L440</td><td>`%files`</td><td>`UBDIAG_RPM_FILES` 将 UbDiag runtime 动态写入 RPM 文件列表。</td></tr>
     </table>
 
+    <span id="L80-L82"></span>
+    <span id="L184-L199"></span>
     <h2>1. Manifest 协议入口</h2>
     <div class="code-card">
       <div class="code-title"><span>BUILDROOT and manifest read</span><span>build_rpm.sh L80-L199</span></div>
@@ -51,6 +53,7 @@
       </table>
     </div>
 
+    <span id="L201-L236"></span>
     <h2>2. L1：打包 submodule 同源产物</h2>
     <div class="code-card">
       <div class="code-title"><span>L1 vendored UbDiag runtime</span><span>build_rpm.sh L201-L236</span></div>
@@ -76,6 +79,7 @@
       </table>
     </div>
 
+    <span id="L237-L282"></span>
     <h2>3. L2：打包客户本地系统 UbDiag</h2>
     <div class="code-card">
       <div class="code-title"><span>L2 system UbDiag runtime</span><span>build_rpm.sh L237-L285</span></div>
@@ -104,6 +108,7 @@
       </table>
     </div>
 
+    <span id="L428-L440"></span>
     <h2>4. RPM file list</h2>
     <div class="code-card">
       <div class="code-title"><span>%files includes dynamic UbDiag runtime entries</span><span>build_rpm.sh L428-L440</span></div>

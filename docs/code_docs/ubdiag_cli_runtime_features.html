@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>UbDiag CLI 参数与展示层代码导读</title>
+  <link rel="stylesheet" href="file:///D:/Code/Mooncake/docs/code_docs/codex_dark.css">
+</head>
+<body>
+  <main class="page">
+    <div class="eyebrow">Mooncake UbDiag Code Walkthrough</div>
+    <h1>UbDiag CLI：`--csv`、`--perflog`、P99 展示与 CSV 落盘</h1>
+    <p>覆盖源文件：<a href="file:///D:/Code/Mooncake/extern/ubdiag/src/cli/cli_config.cpp">extern/ubdiag/src/cli/cli_config.cpp</a>、<a href="file:///D:/Code/Mooncake/extern/ubdiag/src/cli/display_engine.cpp">extern/ubdiag/src/cli/display_engine.cpp</a></p>
+    <div class="panel">
+      <p><span class="note">阅读重点：</span>Mooncake 侧负责把带 CSV/P99/PerfLog 能力的 CLI 打进 RPM；这些能力实际由 UbDiag CLI 的参数解析和展示层承接。</p>
+    </div>
+    <div class="legend">
+      <span class="badge new">本次交付依赖能力</span>
+      <span class="badge key">CLI 运行时路径</span>
+      <span class="badge scope">编译宏边界</span>
+    </div>
+
+    <table class="map">
+      <tr><th>源文件</th><th>行号</th><th>作用</th></tr>
+      <tr><td>cli_config.cpp</td><td>L458-L464</td><td>帮助文本声明 `--perflog` 与 `--csv`。</td></tr>
+      <tr><td>cli_config.cpp</td><td>L768-L780</td><td>解析 `--csv [dir]` 和 `--perflog`；PerfLog 受 `UBDIAG_ENABLE_PERFLOG` 编译宏保护。</td></tr>
+      <tr><td>display_engine.cpp</td><td>L236-L262</td><td>PerfPoint 展示表中追加 P99/P999/P9999 列。</td></tr>
+      <tr><td>display_engine.cpp</td><td>L668-L720</td><td>`ShowPerfLog()` 读取 perflog 样本并进入 CSV session。</td></tr>
+    </table>
+
+    <span id="L458-L464"></span>
+    <h2>1. CLI help text</h2>
+    <div class="code-card">
+      <div class="code-title"><span>`--perflog` and `--csv` help</span><span>cli_config.cpp L458-L464</span></div>
+      <table class="code">
+        <tr class="new"><td class="ln">458</td><td class="src">        "  --perflog              Enable perflog timestamp logging (start)\n"</td></tr>
+        <tr class="new"><td class="ln">459</td><td class="src">        "                         Show perflog timestamp log (show/watch)\n"</td></tr>
+        <tr><td class="ln">460</td><td class="src">        "\n"</td></tr>
+        <tr><td class="ln">461</td><td class="src">        "  -H, --clear-history    Clear dump history records\n"</td></tr>
+        <tr><td class="ln">462</td><td class="src">        "  --history-size &lt;N&gt;     History ring buffer capacity (default: 30)\n"</td></tr>
+        <tr><td class="ln">463</td><td class="src">        "  --data-dir &lt;path&gt;      Data directory for persistent files\n"</td></tr>
+        <tr class="new"><td class="ln">464</td><td class="src">        "  --csv [dir]            Export output as CSV files (default: ./results)\n"</td></tr>
+      </table>
+    </div>
+
+    <span id="L768-L780"></span>
+    <h2>2. CLI argument parsing</h2>
+    <div class="code-card">
+      <div class="code-title"><span>`--csv [dir]` and `--perflog` parse path</span><span>cli_config.cpp L768-L780</span></div>
+      <table class="code">
+        <tr class="new"><td class="ln">768</td><td class="src">        } else if (arg == "--csv") {</td></tr>
+        <tr class="new"><td class="ln">769</td><td class="src">            // 可选值: --csv 无参数时使用默认路径, --csv &lt;dir&gt; 使用自定义路径</td></tr>
+        <tr class="new"><td class="ln">770</td><td class="src">            cfg.SetFlag(UserFlag::CSV_OUTPUT);</td></tr>
+        <tr class="new"><td class="ln">771</td><td class="src">            if (i + 1 &lt; argc &amp;&amp; argv[i + 1][0] != '-') {</td></tr>
+        <tr class="new"><td class="ln">772</td><td class="src">                cfg.csvOutputDir = argv[++i];</td></tr>
+        <tr class="new"><td class="ln">773</td><td class="src">            }</td></tr>
+        <tr><td class="ln">774</td><td class="src">            // 否则保持 CliConfig 默认值 (./results)</td></tr>
+        <tr class="new"><td class="ln">775</td><td class="src">        } else if (arg == "--perflog") {</td></tr>
+        <tr class="scope"><td class="ln">776</td><td class="src">#ifdef UBDIAG_ENABLE_PERFLOG</td></tr>
+        <tr class="new"><td class="ln">777</td><td class="src">            cfg.perflogShow = true;</td></tr>
+        <tr class="new"><td class="ln">778</td><td class="src">            cfg.perflogStart = true;</td></tr>
+        <tr class="scope"><td class="ln">779</td><td class="src">#else</td></tr>
+        <tr class="scope"><td class="ln">780</td><td class="src">            result.error = "--perflog is not available (build with -s on)";</td></tr>
+      </table>
+    </div>
+
+    <span id="L14-L18"></span>
+    <span id="L72-L76"></span>
+    <span id="L236-L262"></span>
+    <h2>3. P99/P999/P9999 display path</h2>
+    <div class="code-card">
+      <div class="code-title"><span>Percentile columns in PerfPoint output</span><span>display_engine.cpp L236-L262</span></div>
+      <table class="code">
+        <tr class="scope"><td class="ln">236</td><td class="src">#ifdef UBDIAG_ENABLE_PERCENTILE</td></tr>
+        <tr class="new"><td class="ln">237</td><td class="src">    table.AddColumn("P99(ns)", 12, true);</td></tr>
+        <tr class="new"><td class="ln">238</td><td class="src">    table.AddColumn("P999(ns)", 12, true);</td></tr>
+        <tr class="new"><td class="ln">239</td><td class="src">    table.AddColumn("P9999(ns)", 12, true);</td></tr>
+        <tr class="scope"><td class="ln">240</td><td class="src">#endif</td></tr>
+        <tr><td class="ln">243</td><td class="src">    for (const auto&amp; s : filtered) {</td></tr>
+        <tr><td class="ln">244</td><td class="src">        std::vector&lt;std::string&gt; cells = {</td></tr>
+        <tr><td class="ln">257</td><td class="src">            FormatNs(s.globalMaxTimeNs, 12)</td></tr>
+        <tr><td class="ln">258</td><td class="src">        };</td></tr>
+        <tr class="scope"><td class="ln">259</td><td class="src">#ifdef UBDIAG_ENABLE_PERCENTILE</td></tr>
+        <tr class="new"><td class="ln">260</td><td class="src">        cells.push_back(FormatPercentile(s.p99Ns, s.hasP99, 12));</td></tr>
+        <tr class="new"><td class="ln">261</td><td class="src">        cells.push_back(FormatPercentile(s.p999Ns, s.hasP999, 12));</td></tr>
+        <tr class="new"><td class="ln">262</td><td class="src">        cells.push_back(FormatPercentile(s.p9999Ns, s.hasP9999, 12));</td></tr>
+      </table>
+    </div>
+
+    <span id="L620-L720"></span>
+    <span id="L668-L720"></span>
+    <h2>4. PerfLog and CSV session path</h2>
+    <div class="code-card">
+      <div class="code-title"><span>CSV session and PerfLog output</span><span>display_engine.cpp L620-L720</span></div>
+      <table class="code">
+        <tr class="new"><td class="ln">633</td><td class="src">    std::cout &lt;&lt; "\n";</td></tr>
+        <tr class="new"><td class="ln">634</td><td class="src">    csvWriter_.EndSession();</td></tr>
+        <tr class="new"><td class="ln">638</td><td class="src">    csvWriter_.BeginSession("ubdiag_cachestat");</td></tr>
+        <tr class="new"><td class="ln">640</td><td class="src">    csvWriter_.EndSession();</td></tr>
+        <tr class="new"><td class="ln">662</td><td class="src">    csvWriter_.BeginSession("ubdiag_mempoint");</td></tr>
+        <tr class="new"><td class="ln">665</td><td class="src">    csvWriter_.EndSession();</td></tr>
+        <tr class="scope"><td class="ln">668</td><td class="src">#ifdef UBDIAG_ENABLE_PERFLOG</td></tr>
+        <tr class="new"><td class="ln">669</td><td class="src">void DisplayEngine::ShowPerfLog(const ShmInfo&amp; info, const ShardBuffer&amp; shards,</td></tr>
+        <tr><td class="ln">673</td><td class="src">    struct PerfLogRow {</td></tr>
+        <tr><td class="ln">674</td><td class="src">        uint64_t timestampNs;</td></tr>
+        <tr><td class="ln">675</td><td class="src">        uint64_t costNs;</td></tr>
+        <tr><td class="ln">685</td><td class="src">    std::vector&lt;PerfLogRow&gt; rows;</td></tr>
+        <tr class="new"><td class="ln">690</td><td class="src">    csvWriter_.BeginSession("ubdiag_perflog");</td></tr>
+        <tr><td class="ln">692</td><td class="src">    for (uint32_t p = 0; p &lt; numPrograms; ++p) {</td></tr>
+        <tr><td class="ln">713</td><td class="src">                uint32_t count = stat.perflogWritePos.load(std::memory_order_relaxed);</td></tr>
+        <tr><td class="ln">716</td><td class="src">                    if (stat.timestamps[t] != 0) {</td></tr>
+        <tr><td class="ln">718</td><td class="src">                        row.timestampNs = stat.timestamps[t];</td></tr>
+        <tr><td class="ln">719</td><td class="src">                        row.costNs = stat.perflogCosts[t];</td></tr>
+        <tr><td class="ln">720</td><td class="src">                        row.pid = static_cast&lt;uint32_t&gt;(prog.pid);</td></tr>
+      </table>
+    </div>
+  </main>
+</body>
+</html>

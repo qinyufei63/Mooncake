@@ -187,21 +187,21 @@ graph TB
 
 | 文件 | 作用 | 关键代码 |
 |---|---|---|
-| [mooncake-common/FindUbDiag.cmake](../mooncake-common/FindUbDiag.cmake) | 三层分发主逻辑，新增 CLI 构建、L2 CLI 导入、RPM manifest 输出 | L13-L24 选项，L26-L36 manifest，L68-L158 L1，L160-L231 L2，L233-L239 L3 |
-| [scripts/build_rpm.sh](../scripts/build_rpm.sh) | Mooncake RPM 打包，读取 manifest 后按 layer 打包 UbDiag CLI/lib/config | L184-L285 UbDiag 打包逻辑，L428-L440 `%files` |
-| [mooncake-store/src/CMakeLists.txt](../mooncake-store/src/CMakeLists.txt) | Mooncake Store 链接 `UbDiag::ubdiag_lib` | L250-L252 |
-| [mooncake-transfer-engine/src/CMakeLists.txt](../mooncake-transfer-engine/src/CMakeLists.txt) | Transfer Engine 链接 `UbDiag::ubdiag_lib` | L2、L50-L64 |
-| [mooncake-integration/CMakeLists.txt](../mooncake-integration/CMakeLists.txt) | Python store 模块链接 `UbDiag::ubdiag_lib` | L104-L106 |
+| [mooncake-common/FindUbDiag.cmake](file:///D:/Code/Mooncake/docs/code_docs/findubdiag_three_layer_cli.html) | 三层分发主逻辑，新增 CLI 构建、L2 CLI 导入、RPM manifest 输出 | L13-L24 选项，L26-L36 manifest，L68-L158 L1，L160-L231 L2，L233-L239 L3 |
+| [scripts/build_rpm.sh](file:///D:/Code/Mooncake/docs/code_docs/rpm_ubdiag_runtime_packaging.html) | Mooncake RPM 打包，读取 manifest 后按 layer 打包 UbDiag CLI/lib/config | L184-L285 UbDiag 打包逻辑，L428-L440 `%files` |
+| [mooncake-store/src/CMakeLists.txt](file:///D:/Code/Mooncake/docs/code_docs/mooncake_ubdiag_consumers.html) | Mooncake Store 链接 `UbDiag::ubdiag_lib` | L250-L252 |
+| [mooncake-transfer-engine/src/CMakeLists.txt](file:///D:/Code/Mooncake/docs/code_docs/mooncake_ubdiag_consumers.html) | Transfer Engine 链接 `UbDiag::ubdiag_lib` | L2、L50-L64 |
+| [mooncake-integration/CMakeLists.txt](file:///D:/Code/Mooncake/docs/code_docs/mooncake_ubdiag_consumers.html) | Python store 模块链接 `UbDiag::ubdiag_lib` | L104-L106 |
 
 ### 3.2 UbDiag submodule 侧承接能力
 
 | 文件 | 作用 | 关键代码 |
 |---|---|---|
-| [extern/ubdiag/CMakeLists.txt](../extern/ubdiag/CMakeLists.txt) | UbDiag 顶层开关、install 规则 | L11-L18 P99/PerfLog/shared 选项，L44-L49 宏定义，L179-L187 CLI/config install |
-| [extern/ubdiag/src/sdk/CMakeLists.txt](../extern/ubdiag/src/sdk/CMakeLists.txt) | SDK 库构建，`UBDIAG_BUILD_SHARED` 控制 `.so` | L9-L20 |
-| [extern/ubdiag/src/cli/CMakeLists.txt](../extern/ubdiag/src/cli/CMakeLists.txt) | CLI target，包含 `csv_writer.cpp` | L1-L16 |
-| [extern/ubdiag/src/cli/cli_config.cpp](../extern/ubdiag/src/cli/cli_config.cpp) | CLI 参数解析，支持 `--perflog`、`--csv` | L458-L464、L768-L780 |
-| [extern/ubdiag/src/cli/display_engine.cpp](../extern/ubdiag/src/cli/display_engine.cpp) | CLI 展示层，P99/P999/P9999 和 CSV 输出承接 | 多处 `UBDIAG_ENABLE_PERCENTILE` 和 CSV writer 调用 |
+| [extern/ubdiag/CMakeLists.txt](file:///D:/Code/Mooncake/docs/code_docs/ubdiag_submodule_build_targets.html) | UbDiag 顶层开关、install 规则 | L11-L18 P99/PerfLog/shared 选项，L44-L49 宏定义，L179-L187 CLI/config install |
+| [extern/ubdiag/src/sdk/CMakeLists.txt](file:///D:/Code/Mooncake/docs/code_docs/ubdiag_submodule_build_targets.html) | SDK 库构建，`UBDIAG_BUILD_SHARED` 控制 `.so` | L9-L20 |
+| [extern/ubdiag/src/cli/CMakeLists.txt](file:///D:/Code/Mooncake/docs/code_docs/ubdiag_submodule_build_targets.html) | CLI target，包含 `csv_writer.cpp` | L1-L16 |
+| [extern/ubdiag/src/cli/cli_config.cpp](file:///D:/Code/Mooncake/docs/code_docs/ubdiag_cli_runtime_features.html) | CLI 参数解析，支持 `--perflog`、`--csv` | L458-L464、L768-L780 |
+| [extern/ubdiag/src/cli/display_engine.cpp](file:///D:/Code/Mooncake/docs/code_docs/ubdiag_cli_runtime_features.html) | CLI 展示层，P99/P999/P9999 和 CSV 输出承接 | 多处 `UBDIAG_ENABLE_PERCENTILE` 和 CSV writer 调用 |
 
 当前 submodule 指针为：
 
@@ -217,7 +217,7 @@ extern/ubdiag -> 6ebaad32b0be8f8ecb7c746866c96c372228d07f
 
 ### 4.1 顶层开关
 
-> 源码：[FindUbDiag.cmake#L13-L24](../mooncake-common/FindUbDiag.cmake#L13-L24)
+> 源码：[FindUbDiag.cmake#L13-L24](file:///D:/Code/Mooncake/docs/code_docs/findubdiag_three_layer_cli.html#L13-L24)
 
 ```cmake
 option(MOONCAKE_UBDIAG_BUILD_CLI
@@ -249,7 +249,7 @@ option(MOONCAKE_UBDIAG_DISABLE_SYSTEM
 
 ### 4.2 RPM manifest
 
-> 源码：[FindUbDiag.cmake#L26-L36](../mooncake-common/FindUbDiag.cmake#L26-L36)
+> 源码：[FindUbDiag.cmake#L26-L36](file:///D:/Code/Mooncake/docs/code_docs/findubdiag_three_layer_cli.html#L26-L36)
 
 ```cmake
 function(_mooncake_ubdiag_write_rpm_manifest layer cli_path library_path config_path)
@@ -278,7 +278,7 @@ MOONCAKE_UBDIAG_CONFIG_PATH=/path/to/Mooncake/extern/ubdiag/config/ubdiag.conf.e
 
 ### 5.1 L1 触发条件
 
-> 源码：[FindUbDiag.cmake#L68](../mooncake-common/FindUbDiag.cmake#L68)
+> 源码：[FindUbDiag.cmake#L68](file:///D:/Code/Mooncake/docs/code_docs/findubdiag_three_layer_cli.html#L68)
 
 ```cmake
 if(EXISTS "${CMAKE_SOURCE_DIR}/extern/ubdiag/CMakeLists.txt")
@@ -288,7 +288,7 @@ if(EXISTS "${CMAKE_SOURCE_DIR}/extern/ubdiag/CMakeLists.txt")
 
 ### 5.2 临时关闭 UbDiag examples/tests
 
-> 源码：[FindUbDiag.cmake#L69-L84](../mooncake-common/FindUbDiag.cmake#L69-L84)、[FindUbDiag.cmake#L104-L117](../mooncake-common/FindUbDiag.cmake#L104-L117)
+> 源码：[FindUbDiag.cmake#L69-L84](file:///D:/Code/Mooncake/docs/code_docs/findubdiag_three_layer_cli.html#L69-L84)、[FindUbDiag.cmake#L104-L117](file:///D:/Code/Mooncake/docs/code_docs/findubdiag_three_layer_cli.html#L104-L117)
 
 ```cmake
 set(BUILD_EXAMPLES OFF CACHE BOOL "Disable UbDiag examples when vendored by Mooncake" FORCE)
@@ -305,7 +305,7 @@ set(BUILD_TESTS OFF CACHE BOOL "Disable UbDiag tests when vendored by Mooncake" 
 
 ### 5.3 强制同源共享库、P99、PerfLog
 
-> 源码：[FindUbDiag.cmake#L85-L99](../mooncake-common/FindUbDiag.cmake#L85-L99)
+> 源码：[FindUbDiag.cmake#L85-L99](file:///D:/Code/Mooncake/docs/code_docs/findubdiag_three_layer_cli.html#L85-L99)
 
 ```cmake
 if(MOONCAKE_UBDIAG_L1_SHARED)
@@ -334,7 +334,7 @@ endif()
 
 UbDiag 子模块自身承接这些开关：
 
-> 源码：[extern/ubdiag/CMakeLists.txt#L11-L18](../extern/ubdiag/CMakeLists.txt#L11-L18)、[extern/ubdiag/CMakeLists.txt#L44-L49](../extern/ubdiag/CMakeLists.txt#L44-L49)
+> 源码：[extern/ubdiag/CMakeLists.txt#L11-L18](file:///D:/Code/Mooncake/docs/code_docs/ubdiag_submodule_build_targets.html#L11-L18)、[extern/ubdiag/CMakeLists.txt#L44-L49](file:///D:/Code/Mooncake/docs/code_docs/ubdiag_submodule_build_targets.html#L44-L49)
 
 ```cmake
 option(ENABLE_PERCENTILE "Enable P99/P999/P9999 percentile calculation" OFF)
@@ -351,7 +351,7 @@ endif()
 
 ### 5.4 引入 UbDiag 子模块
 
-> 源码：[FindUbDiag.cmake#L101-L102](../mooncake-common/FindUbDiag.cmake#L101-L102)
+> 源码：[FindUbDiag.cmake#L101-L102](file:///D:/Code/Mooncake/docs/code_docs/findubdiag_three_layer_cli.html#L101-L102)
 
 ```cmake
 add_subdirectory(${CMAKE_SOURCE_DIR}/extern/ubdiag
@@ -366,7 +366,7 @@ add_subdirectory(${CMAKE_SOURCE_DIR}/extern/ubdiag
 
 ### 5.5 include path 修正
 
-> 源码：[FindUbDiag.cmake#L119-L141](../mooncake-common/FindUbDiag.cmake#L119-L141)
+> 源码：[FindUbDiag.cmake#L119-L141](file:///D:/Code/Mooncake/docs/code_docs/findubdiag_three_layer_cli.html#L119-L141)
 
 ```cmake
 set(_MOONCAKE_UBDIAG_SOURCE_DIR "${CMAKE_SOURCE_DIR}/extern/ubdiag")
@@ -399,7 +399,7 @@ endif()
 
 ### 5.6 CLI 纳入默认构建
 
-> 源码：[FindUbDiag.cmake#L137-L144](../mooncake-common/FindUbDiag.cmake#L137-L144)
+> 源码：[FindUbDiag.cmake#L137-L144](file:///D:/Code/Mooncake/docs/code_docs/findubdiag_three_layer_cli.html#L137-L144)
 
 ```cmake
 if(TARGET ubdiag)
@@ -424,7 +424,7 @@ endif()
 
 UbDiag CLI 自身的 target：
 
-> 源码：[extern/ubdiag/src/cli/CMakeLists.txt#L1-L16](../extern/ubdiag/src/cli/CMakeLists.txt#L1-L16)
+> 源码：[extern/ubdiag/src/cli/CMakeLists.txt#L1-L16](file:///D:/Code/Mooncake/docs/code_docs/ubdiag_submodule_build_targets.html#L1-L16)
 
 ```cmake
 set(CLI_SOURCES
@@ -446,7 +446,7 @@ CSV 能力来自 `csv_writer.cpp` 被编入 CLI；P99/PerfLog 能力由 `ENABLE_
 
 ### 5.7 L1 RPM manifest
 
-> 源码：[FindUbDiag.cmake#L149-L155](../mooncake-common/FindUbDiag.cmake#L149-L155)
+> 源码：[FindUbDiag.cmake#L149-L155](file:///D:/Code/Mooncake/docs/code_docs/findubdiag_three_layer_cli.html#L149-L155)
 
 ```cmake
 add_library(UbDiag::ubdiag_lib ALIAS ubdiag_lib)
@@ -483,7 +483,7 @@ L2 的来源必须是客户机本地系统路径。Mooncake 不负责提供、�
 
 ### 6.2 L2 查找系统 UbDiag
 
-> 源码：[FindUbDiag.cmake#L160-L170](../mooncake-common/FindUbDiag.cmake#L160-L170)
+> 源码：[FindUbDiag.cmake#L160-L170](file:///D:/Code/Mooncake/docs/code_docs/findubdiag_three_layer_cli.html#L160-L170)
 
 ```cmake
 if(NOT MOONCAKE_UBDIAG_DISABLE_SYSTEM)
@@ -500,7 +500,7 @@ if(NOT MOONCAKE_UBDIAG_DISABLE_SYSTEM)
 
 ### 6.3 从 imported target 解析 libubdiag.so
 
-> 源码：[FindUbDiag.cmake#L38-L63](../mooncake-common/FindUbDiag.cmake#L38-L63)、[FindUbDiag.cmake#L171-L180](../mooncake-common/FindUbDiag.cmake#L171-L180)
+> 源码：[FindUbDiag.cmake#L38-L63](file:///D:/Code/Mooncake/docs/code_docs/findubdiag_three_layer_cli.html#L38-L63)、[FindUbDiag.cmake#L171-L180](file:///D:/Code/Mooncake/docs/code_docs/findubdiag_three_layer_cli.html#L171-L180)
 
 ```cmake
 _mooncake_ubdiag_get_imported_location(UbDiag::ubdiag_lib _MOONCAKE_UBDIAG_SYSTEM_LIBRARY)
@@ -529,7 +529,7 @@ config: /usr/local/etc/ubdiag/ubdiag.conf
 
 ### 6.4 导入系统 CLI target
 
-> 源码：[FindUbDiag.cmake#L187-L203](../mooncake-common/FindUbDiag.cmake#L187-L203)
+> 源码：[FindUbDiag.cmake#L187-L203](file:///D:/Code/Mooncake/docs/code_docs/findubdiag_three_layer_cli.html#L187-L203)
 
 ```cmake
 find_program(MOONCAKE_UBDIAG_SYSTEM_CLI
@@ -562,7 +562,7 @@ L2 下并不编译 CLI，而是把系统已有 CLI 作为 imported executable ta
 
 ### 6.5 L2 RPM manifest
 
-> 源码：[FindUbDiag.cmake#L211-L228](../mooncake-common/FindUbDiag.cmake#L211-L228)
+> 源码：[FindUbDiag.cmake#L211-L228](file:///D:/Code/Mooncake/docs/code_docs/findubdiag_three_layer_cli.html#L211-L228)
 
 ```cmake
 find_file(MOONCAKE_UBDIAG_SYSTEM_CONFIG
@@ -585,7 +585,7 @@ message(STATUS "UbDiag: using system package (CLI=${_MOONCAKE_UBDIAG_SYSTEM_CLI}
 
 ## 7. Layer 3: Mock fallback
 
-> 源码：[FindUbDiag.cmake#L233-L239](../mooncake-common/FindUbDiag.cmake#L233-L239)
+> 源码：[FindUbDiag.cmake#L233-L239](file:///D:/Code/Mooncake/docs/code_docs/findubdiag_three_layer_cli.html#L233-L239)
 
 ```cmake
 add_library(ubdiag_mock INTERFACE)
@@ -610,7 +610,7 @@ L3 没有 CLI、没有 `.so`、没有共享内存运行态。它的唯一职责�
 
 ### 8.1 打包目录
 
-> 源码：[scripts/build_rpm.sh#L80-L82](../scripts/build_rpm.sh#L80-L82)
+> 源码：[scripts/build_rpm.sh#L80-L82](file:///D:/Code/Mooncake/docs/code_docs/rpm_ubdiag_runtime_packaging.html#L80-L82)
 
 ```bash
 mkdir -p rpmbuild/BUILDROOT/${PACKAGE_NAME}-${PACKAGE_VERSION}-${PACKAGE_RELEASE}.${PLATFORM}/{usr/{bin,${LIB_DIR},include},etc/{mooncake,ubdiag}}
@@ -620,7 +620,7 @@ mkdir -p rpmbuild/BUILDROOT/${PACKAGE_NAME}-${PACKAGE_VERSION}-${PACKAGE_RELEASE
 
 ### 8.2 读取 manifest
 
-> 源码：[scripts/build_rpm.sh#L184-L199](../scripts/build_rpm.sh#L184-L199)
+> 源码：[scripts/build_rpm.sh#L184-L199](file:///D:/Code/Mooncake/docs/code_docs/rpm_ubdiag_runtime_packaging.html#L184-L199)
 
 ```bash
 local UBDIAG_BUILD_DIR="${PLATFORM_BUILD_DIR}/extern/ubdiag_build"
@@ -638,7 +638,7 @@ fi
 
 ### 8.3 L1 打包 vendored CLI 和 SDK
 
-> 源码：[scripts/build_rpm.sh#L201-L236](../scripts/build_rpm.sh#L201-L236)
+> 源码：[scripts/build_rpm.sh#L201-L236](file:///D:/Code/Mooncake/docs/code_docs/rpm_ubdiag_runtime_packaging.html#L201-L236)
 
 ```bash
 if { [ -z "${MOONCAKE_UBDIAG_LAYER}" ] || [ "${MOONCAKE_UBDIAG_LAYER}" = "submodule" ]; } && [ -d "${UBDIAG_BUILD_DIR}" ]; then
@@ -667,7 +667,7 @@ fi
 
 ### 8.4 L2 打包系统 CLI 和 SDK
 
-> 源码：[scripts/build_rpm.sh#L237-L282](../scripts/build_rpm.sh#L237-L282)
+> 源码：[scripts/build_rpm.sh#L237-L282](file:///D:/Code/Mooncake/docs/code_docs/rpm_ubdiag_runtime_packaging.html#L237-L282)
 
 ```bash
 elif [ "${MOONCAKE_UBDIAG_LAYER}" = "system" ]; then
@@ -697,7 +697,7 @@ L2 的关键边界：
 
 ### 8.5 RPM `%files`
 
-> 源码：[scripts/build_rpm.sh#L428-L440](../scripts/build_rpm.sh#L428-L440)
+> 源码：[scripts/build_rpm.sh#L428-L440](file:///D:/Code/Mooncake/docs/code_docs/rpm_ubdiag_runtime_packaging.html#L428-L440)
 
 ```spec
 %files
@@ -733,7 +733,7 @@ UbDiag::ubdiag_lib
 
 ### 9.1 Store
 
-> 源码：[mooncake-store/src/CMakeLists.txt#L250-L252](../mooncake-store/src/CMakeLists.txt#L250-L252)
+> 源码：[mooncake-store/src/CMakeLists.txt#L250-L252](file:///D:/Code/Mooncake/docs/code_docs/mooncake_ubdiag_consumers.html#L250-L252)
 
 ```cmake
 # UbDiag instrumentation (resolved by FindUbDiag.cmake: submodule > system > mock)
@@ -743,7 +743,7 @@ target_link_libraries(mooncake_store PRIVATE UbDiag::ubdiag_lib)
 
 ### 9.2 Transfer Engine
 
-> 源码：[mooncake-transfer-engine/src/CMakeLists.txt#L2](../mooncake-transfer-engine/src/CMakeLists.txt#L2)、[mooncake-transfer-engine/src/CMakeLists.txt#L50-L64](../mooncake-transfer-engine/src/CMakeLists.txt#L50-L64)
+> 源码：[mooncake-transfer-engine/src/CMakeLists.txt#L2](file:///D:/Code/Mooncake/docs/code_docs/mooncake_ubdiag_consumers.html#L2)、[mooncake-transfer-engine/src/CMakeLists.txt#L50-L64](file:///D:/Code/Mooncake/docs/code_docs/mooncake_ubdiag_consumers.html#L50-L64)
 
 ```cmake
 include(${CMAKE_SOURCE_DIR}/mooncake-common/FindUbDiag.cmake)
@@ -760,7 +760,7 @@ target_link_libraries(
 
 ### 9.3 Python store binding
 
-> 源码：[mooncake-integration/CMakeLists.txt#L104-L106](../mooncake-integration/CMakeLists.txt#L104-L106)
+> 源码：[mooncake-integration/CMakeLists.txt#L104-L106](file:///D:/Code/Mooncake/docs/code_docs/mooncake_ubdiag_consumers.html#L104-L106)
 
 ```cmake
 include(${CMAKE_SOURCE_DIR}/mooncake-common/FindUbDiag.cmake)
