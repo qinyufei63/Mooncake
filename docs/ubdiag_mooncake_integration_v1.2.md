@@ -3,7 +3,6 @@
 > **基于**：atomgit liusiyu60/ubdiag master (705c6c3) + GitHub LinQuickDev/Mooncake supercache (2300894)
 > **核心原则**：ubdiag 侧改，Mooncake 侧尽量不侵入
 > **日期**：2026-07-21
-> **本文件自包含，无需参考 v1.0/v1.1**
 
 ---
 
@@ -71,7 +70,7 @@ static const bool _ubdiag_auto_init_ = []() { ... }();
 
 ### 1.3 为什么不再需要 Mooncake 的 mock 目录
 
-| 旧方案 v1.1 | 新方案 v1.2 |
+| 当前已有方案 | v1.2 新方案 |
 |---|---|
 | Mooncake 维护 `mooncake-common/ubdiag-mock/auto_perf.h` | 删除，用 ubdiag 自己的 `auto_perf.h` + `UBDIAG_DISABLE` |
 | 手写 mock 可能和真实接口不同步 | 同一个头文件，`#ifdef` 切换，**永远同步** |
@@ -194,9 +193,9 @@ graph TD
     UBLOGGER --> UBLIB
 ```
 
-### 1.8 旧方案与新方案对比
+### 1.8 当前方案与 v1.2 对比
 
-| 维度 | 旧方案 v1.1 | 新方案 v1.2 |
+| 维度 | 当前已有方案 | v1.2 新方案 |
 |------|------------|------------|
 | **依赖管理** | git submodule `extern/ubdiag/` | FetchContent 拉源码 |
 | **变量冲突** | 50 行 BUILD_TESTS 保存/恢复 workaround | 无冲突（ubdiag 改名 UBDIAG_BUILD_TESTS） |
@@ -336,7 +335,7 @@ if(TARGET ubdiag_lib)
 endif()
 ```
 
-**关键区别 vs v1.1**：
+**关键改进**：
 - **始终 FetchContent 拉源码**（即使 DISABLE 模式，因为需要 ubdiag 的头文件）
 - DISABLE 模式不编译库，只取 `include/` 目录的头文件
 - 不再需要 `mooncake-common/ubdiag-mock/` 目录
@@ -403,13 +402,9 @@ endif()
 
 ---
 
-## 十、版本演进
+## 十、版本说明
 
-```
-v1.0    → 方向确定
-v1.1    → 全量代码读取，修正遗漏
-v1.2    → 基于 UBDIAG_DISABLE 机制，删 mock 目录，始终拉源码
-```
+v1.2 基于 ubdiag master 的 `UBDIAG_DISABLE` 编译期 mock 机制，将 Mooncake 的 ubdiag 集成从 git submodule + 三层 fallback 重构为 FetchContent + 两层模式。后续迭代版本号沿用 v1.3、v1.4……。
 
 ---
 
