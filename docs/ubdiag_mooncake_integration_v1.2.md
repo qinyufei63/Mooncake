@@ -157,6 +157,72 @@ Mooncake 代码库（~24 处打点，跨 5 个子模块）
     └─ build.sh                       ← 经 MOONCAKE_UBDIAG_ACTIVE_LAYER 链接
 ```
 
+### 1.7 CMake Target 依赖关系
+
+```mermaid
+graph TD
+    subgraph "FetchContent 拉取的 ubdiag 源码"
+        UBHEAD["ubdiag include/\n(perf_point.h + auto_perf.h\n+ UBDIAG_DISABLE 条件编译)"]
+
+        subgraph "MOONCAKE_ENABLE_UBDIAG = ON 时编译"
+            UBLIB["ubdiag_lib\n(libubdiag.so)"]
+            UBCLI["ubdiag\n(CLI 可执行文件)"]
+            UBLOGGER["ubdiag_logger"]
+        end
+    end
+
+    subgraph "Mooncake Target 层"
+        UBALIAS["UbDiag::ubdiag_lib\n(ALIAS)"]
+
+        MC_STORE["mooncake_store"]
+        MC_INTEG["mooncake_integration"]
+        MC_TE["transfer_engine"]
+        MC_KUNPENG["kunpeng_transport"]
+        MC_P2P["p2p_store\n(经 build.sh)"]
+    end
+
+    UBHEAD --> UBALIAS
+    UBLIB --> UBALIAS
+
+    UBALIAS -->|PRIVATE link| MC_STORE
+    UBALIAS -->|PRIVATE link| MC_INTEG
+    UBALIAS -->|PRIVATE link| MC_TE
+    UBALIAS -->|PRIVATE link| MC_KUNPENG
+    MCALIAS["MOONCAKE_UBDIAG_ACTIVE_LAYER"] -->|变量传递| MC_P2P
+
+    UBLIB --> UBCLI
+    UBLOGGER --> UBLIB
+```
+
+### 1.8 旧方案 → 新方案对比
+
+```
+旧方案（submodule + 三层 fallback,239 行）       新方案（FetchContent + UBDIAG_DISABLE,55 行）
+┌──────────────────────────────────────────┐     ┌──────────────────────────────────────────┐
+│ .gitmodules [submodule extern/ubdiag]    │     │ .gitmodules (ubdiag 条目已删除)           │
+│ extern/ubdiag/ (submodule 检出)          │     │                                          │
+├──────────────────────────────────────────┤     ├──────────────────────────────────────────┤
+│ Layer 1: add_subdirectory(extern/ubdiag) │     │ FetchContent 拉源码(始终拉)              │
+│   变量保存/恢复(50 行)                    │     │   UBDIAG_BUILD_TESTS(ubdiag 已改名)      │
+│   BUILD_TESTS 冲突 workaround             │     │   无变量冲突                              │
+│   include 路径修复(12 行)                 │     │   PROJECT_SOURCE_DIR(ubdiag 已修好)      │
+│   CMAKE_SOURCE_DIR 漂移 fix              │     │   无需修复                                │
+├──────────────────────────────────────────┤     ├──────────────────────────────────────────┤
+│ Layer 2: find_package(UbDiag)            │     │ (整个 Layer 2 删除)                      │
+│   系统路径查找(40 行)                     │     │                                          │
+│   CLI 查找(15 行)                        │     │                                          │
+│   配置查找(10 行)                        │     │                                          │
+├──────────────────────────────────────────┤     ├──────────────────────────────────────────┤
+│ Layer 3: mooncake-common/ubdiag-mock/    │     │ UBDIAG_DISABLE(ubdiag 自带)              │
+│   手写 mock 头文件(56 行)                │     │   constexpr 空函数(零维护)               │
+│   可能和真实接口不同步                    │     │   永远同步(同一个头文件)                 │
+│   RPM manifest(20 行)                    │     │                                          │
+├──────────────────────────────────────────┤     ├──────────────────────────────────────────┤
+│ 总计: 239 行 + mock 目录 56 行 = 295 行  │     │ 总计: 55 行,无 mock 目录                 │
+└──────────────────────────────────────────┘     └──────────────────────────────────────────┘
+        Mooncake 绕过 ubdiag 的 CMake 缺陷                ubdiag 自己修好了 + UBDIAG_DISABLE
+```
+
 ---
 
 ## 二、项目背景
