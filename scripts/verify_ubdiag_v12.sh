@@ -18,6 +18,18 @@ DEFAULT_HOST="$(hostname -I 2>/dev/null | awk '{print $1}')"
 MASTER_HOST="${MASTER_HOST:-${DEFAULT_HOST:-127.0.0.1}}"
 CLIENT_HOST="${CLIENT_HOST:-${MASTER_HOST}}"
 PROTOCOL="${PROTOCOL:-ub}"
+USE_UB="${USE_UB:-}"
+if [ -z "$USE_UB" ]; then
+    if [ "$PROTOCOL" = "ub" ]; then
+        USE_UB=ON
+    else
+        USE_UB=OFF
+    fi
+fi
+if [ "$PROTOCOL" = "ub" ] && [ "$USE_UB" != "ON" ]; then
+    echo "FATAL: PROTOCOL=ub 要求 USE_UB=ON" >&2
+    exit 1
+fi
 DEVICE_NAME="${DEVICE_NAME:-bonding_dev_0}"
 NUM_KEYS="${NUM_KEYS:-1000}"
 READ_DURATION="${READ_DURATION:-20}"
@@ -199,6 +211,7 @@ export_ubdiag_csv() {
 echo "============================================================"
 echo "  Mooncake UbDiag v1.2 集成验证"
 echo "  时间: $(date '+%Y-%m-%d %H:%M:%S')"
+echo "  传输协议: PROTOCOL=$PROTOCOL USE_UB=$USE_UB DEVICE_NAME=$DEVICE_NAME"
 echo "============================================================"
 
 # ===== 0. 准备 =====
@@ -256,7 +269,7 @@ if [ "$REUSE_BUILD" = "1" ]; then
     cd build_mock
     echo "  REUSE_BUILD=1: 复用构建目录，仅重新执行 DISABLE 模式 CMake 配置"
     if ! cmake .. -DWITH_STORE=ON -DWITH_TE=ON -DWITH_P2P_STORE=OFF \
-         -DSTORE_USE_ETCD=ON -DUSE_ETCD=ON \
+         -DSTORE_USE_ETCD=ON -DUSE_ETCD=ON -DUSE_UB="$USE_UB" \
          -DBUILD_BENCHMARK=ON -DBUILD_UNIT_TESTS=OFF \
          -DBUILD_TESTS=OFF -DBUILD_EXAMPLES=OFF \
          2>&1 | tee cmake_mock.log; then
@@ -266,7 +279,7 @@ if [ "$REUSE_BUILD" = "1" ]; then
 else
     mkdir build_mock && cd build_mock
     if ! cmake .. -DWITH_STORE=ON -DWITH_TE=ON -DWITH_P2P_STORE=OFF \
-         -DSTORE_USE_ETCD=ON -DUSE_ETCD=ON \
+         -DSTORE_USE_ETCD=ON -DUSE_ETCD=ON -DUSE_UB="$USE_UB" \
          -DBUILD_BENCHMARK=ON -DBUILD_UNIT_TESTS=OFF \
          -DBUILD_TESTS=OFF -DBUILD_EXAMPLES=OFF \
          2>&1 | tee cmake_mock.log; then
@@ -275,6 +288,10 @@ else
     fi
 fi
 grep -iE "UbDiag|ubdiag|fetch|disable|error|fatal" cmake_mock.log 2>/dev/null || true
+if [ "$USE_UB" = "ON" ] && ! grep -q '^USE_UB:BOOL=ON$' CMakeCache.txt; then
+    echo "FATAL: DISABLE 构建没有启用 USE_UB" >&2
+    exit 1
+fi
 
 echo ""
 echo "[1/8] 检查 FetchContent 拉取的 ubdiag 版本..."
@@ -320,18 +337,12 @@ echo "============================================================"
 echo "[2/8] Layer 0: DISABLE 模式编译"
 echo "============================================================"
 if [ "$REUSE_BUILD" = "1" ]; then
-    if [ ! -x mooncake-store/src/mooncake_master ] || \
-       [ ! -x mooncake-store/src/mooncake_client ] || \
-       [ ! -x mooncake-store/benchmarks/stress_cluster_bench ]; then
-        echo "  REUSE_BUILD=1: 补充配置并增量编译 benchmark targets"
-        cmake .. -DWITH_STORE=ON -DWITH_TE=ON -DWITH_P2P_STORE=OFF \
-            -DSTORE_USE_ETCD=ON -DUSE_ETCD=ON \
-            -DBUILD_BENCHMARK=ON -DBUILD_UNIT_TESTS=OFF \
-            -DBUILD_TESTS=OFF -DBUILD_EXAMPLES=OFF
-        cmake --build . --parallel "$BUILD_JOBS" \
-            --target mooncake_master mooncake_client stress_cluster_bench
-    else
-        echo "  REUSE_BUILD=1: DISABLE 模式 benchmark targets 已存在，跳过编译"
+    echo "  REUSE_BUILD=1: 按新配置增量重编 DISABLE benchmark targets"
+    if ! cmake --build . --parallel "$BUILD_JOBS" \
+         --target mooncake_master mooncake_client stress_cluster_bench \
+         2>&1 | tee build_mock_incremental.log; then
+        echo "FATAL: DISABLE 模式增量编译失败" >&2
+        exit 1
     fi
 else
     if ! cmake --build . --parallel "$BUILD_JOBS" \
@@ -419,7 +430,7 @@ if [ "$REUSE_BUILD" = "1" ]; then
     echo "  REUSE_BUILD=1: 复用构建目录，仅重新执行 vendored 模式 CMake 配置"
     if ! cmake .. -DMOONCAKE_ENABLE_UBDIAG=ON \
          -DWITH_STORE=ON -DWITH_TE=ON -DWITH_P2P_STORE=OFF \
-         -DSTORE_USE_ETCD=ON -DUSE_ETCD=ON \
+         -DSTORE_USE_ETCD=ON -DUSE_ETCD=ON -DUSE_UB="$USE_UB" \
          -DBUILD_BENCHMARK=ON -DBUILD_UNIT_TESTS=OFF \
          -DBUILD_TESTS=OFF -DBUILD_EXAMPLES=OFF \
          2>&1 | tee cmake_vendored.log; then
@@ -430,7 +441,7 @@ else
     mkdir build_vendored && cd build_vendored
     if ! cmake .. -DMOONCAKE_ENABLE_UBDIAG=ON \
          -DWITH_STORE=ON -DWITH_TE=ON -DWITH_P2P_STORE=OFF \
-         -DSTORE_USE_ETCD=ON -DUSE_ETCD=ON \
+         -DSTORE_USE_ETCD=ON -DUSE_ETCD=ON -DUSE_UB="$USE_UB" \
          -DBUILD_BENCHMARK=ON -DBUILD_UNIT_TESTS=OFF \
          -DBUILD_TESTS=OFF -DBUILD_EXAMPLES=OFF \
          2>&1 | tee cmake_vendored.log; then
@@ -439,6 +450,10 @@ else
     fi
 fi
 grep -iE "UbDiag|ubdiag|fetch|vendored|error|fatal" cmake_vendored.log 2>/dev/null || true
+if [ "$USE_UB" = "ON" ] && ! grep -q '^USE_UB:BOOL=ON$' CMakeCache.txt; then
+    echo "FATAL: vendored 构建没有启用 USE_UB" >&2
+    exit 1
+fi
 
 echo ""
 echo "[4/8] 检查 FetchContent 拉取的 ubdiag 版本..."
@@ -479,20 +494,12 @@ echo "============================================================"
 echo "[5/8] Layer 1: vendored 模式编译"
 echo "============================================================"
 if [ "$REUSE_BUILD" = "1" ]; then
-    if [ ! -x mooncake-store/src/mooncake_master ] || \
-       [ ! -x mooncake-store/src/mooncake_client ] || \
-       [ ! -x mooncake-store/benchmarks/stress_cluster_bench ] || \
-       [ ! -x _deps/ubdiag-build/src/cli/ubdiag ]; then
-        echo "  REUSE_BUILD=1: 补充配置并增量编译 vendored benchmark targets"
-        cmake .. -DMOONCAKE_ENABLE_UBDIAG=ON \
-            -DWITH_STORE=ON -DWITH_TE=ON -DWITH_P2P_STORE=OFF \
-            -DSTORE_USE_ETCD=ON -DUSE_ETCD=ON \
-            -DBUILD_BENCHMARK=ON -DBUILD_UNIT_TESTS=OFF \
-            -DBUILD_TESTS=OFF -DBUILD_EXAMPLES=OFF
-        cmake --build . --parallel "$BUILD_JOBS" \
-            --target mooncake_master mooncake_client stress_cluster_bench ubdiag
-    else
-        echo "  REUSE_BUILD=1: vendored benchmark targets 已存在，跳过编译"
+    echo "  REUSE_BUILD=1: 按新配置增量重编 vendored benchmark targets"
+    if ! cmake --build . --parallel "$BUILD_JOBS" \
+         --target mooncake_master mooncake_client stress_cluster_bench ubdiag \
+         2>&1 | tee build_vendored_incremental.log; then
+        echo "FATAL: vendored 模式增量编译失败" >&2
+        exit 1
     fi
 else
     if ! cmake --build . --parallel "$BUILD_JOBS" \
