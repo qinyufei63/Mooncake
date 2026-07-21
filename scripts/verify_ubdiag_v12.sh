@@ -4,11 +4,12 @@
 # 验证: DISABLE 模式 + vendored 模式 + 版本校验 + 打点验证
 # 用法: bash scripts/verify_ubdiag_v12.sh
 # ============================================================
-set -e
+set -Eeuo pipefail
 
 WORKSPACE=/home/q00913006/project
 MOONCAKE_DIR=$WORKSPACE/mooncake-v12-verify
 UBDIAG_VER_TAG="v0.5.1"
+BUILD_JOBS="${BUILD_JOBS:-$(nproc)}"
 
 export PATH=/usr/local/bin:$PATH
 export LD_LIBRARY_PATH=/usr/local/lib64:/usr/lib64:$LD_LIBRARY_PATH
@@ -24,8 +25,18 @@ echo "[0/8] 准备工作区..."
 # 先回到 workspace 根目录(避免 rm -rf 删掉自己所在的目录)
 cd $WORKSPACE
 rm -rf $MOONCAKE_DIR
-git clone -b supercache_dev_ubdiag https://github.com/qinyufei63/Mooncake.git $MOONCAKE_DIR --depth=1
+git clone -b supercache_dev_ubdiag \
+    --depth=1 --recurse-submodules --shallow-submodules \
+    https://github.com/qinyufei63/Mooncake.git "$MOONCAKE_DIR"
 cd $MOONCAKE_DIR
+
+SUBMODULE_STATUS="$(git submodule status --recursive)"
+if [ -z "$SUBMODULE_STATUS" ] || echo "$SUBMODULE_STATUS" | grep -Eq '^[-+U]'; then
+    echo "FATAL: Mooncake 必需子模块未完整初始化"
+    echo "$SUBMODULE_STATUS"
+    exit 1
+fi
+echo "  OK: pybind11/yalantinglibs 子模块已初始化"
 
 if [ ! -f mooncake-common/FindUbDiag.cmake ]; then
     echo "FATAL: FindUbDiag.cmake 不存在"
@@ -41,9 +52,12 @@ echo "============================================================"
 echo "[1/8] Layer 0: DISABLE 模式 cmake 配置"
 echo "============================================================"
 mkdir build_mock && cd build_mock
-cmake .. -DWITH_STORE=ON -DWITH_TE=ON -DWITH_P2P_STORE=OFF \
-     -DSTORE_USE_ETCD=ON -DUSE_ETCD=ON 2>&1 | tee cmake_mock.log | \
-     grep -iE "UbDiag|ubdiag|fetch|disable|error|fatal" || true
+if ! cmake .. -DWITH_STORE=ON -DWITH_TE=ON -DWITH_P2P_STORE=OFF \
+     -DSTORE_USE_ETCD=ON -DUSE_ETCD=ON 2>&1 | tee cmake_mock.log; then
+    echo "FATAL: DISABLE 模式 CMake 配置失败，停止验证"
+    exit 1
+fi
+grep -iE "UbDiag|ubdiag|fetch|disable|error|fatal" cmake_mock.log || true
 
 echo ""
 echo "[1/8] 检查 FetchContent 拉取的 ubdiag 版本..."
@@ -54,6 +68,13 @@ if [ -d "_deps/ubdiag-src" ]; then
     echo "  tag: $TAG"
     echo "  commit: $COMMIT"
     grep "versionString" include/ubdiag/version.h 2>/dev/null || echo "  (version.h 无 versionString)"
+
+    if ! grep -q "UBDIAG_DISABLE" include/ubdiag/perf_point.h; then
+        echo "FATAL: $TAG 的 perf_point.h 不包含 UBDIAG_DISABLE，无法验证 v1.2 DISABLE 层"
+        echo "       当前文档依赖的空函数机制不在所选 tag 中，请先修正 UbDiag 版本基线"
+        exit 2
+    fi
+    echo "  OK: $TAG 包含 UBDIAG_DISABLE 空函数机制"
     cd ../..
 fi
 
@@ -61,15 +82,18 @@ echo ""
 echo "============================================================"
 echo "[2/8] Layer 0: DISABLE 模式编译"
 echo "============================================================"
-make -j$(nproc) mooncake_store 2>&1 | tail -10
-MOCK_BIN=mooncake-store/src/mooncake_store
+if ! cmake --build . --parallel "$BUILD_JOBS" --target mooncake_master \
+     2>&1 | tee build_mock.log; then
+    echo "FATAL: DISABLE 模式 mooncake_master 编译失败"
+    exit 1
+fi
+MOCK_BIN=mooncake-store/src/mooncake_master
 if [ -f "$MOCK_BIN" ]; then
-    echo "  OK: mooncake_store 编译成功 (DISABLE 模式)"
+    echo "  OK: mooncake_master 编译成功 (DISABLE 模式)"
     file $MOCK_BIN | head -1
 else
-    echo "  WARN: mooncake_store 未编译成功,尝试 transfer_engine"
-    make -j$(nproc) transfer_engine 2>&1 | tail -5
-    MOCK_BIN=""
+    echo "FATAL: mooncake_master 编译命令成功，但可执行文件不存在"
+    exit 1
 fi
 
 echo ""
@@ -83,7 +107,7 @@ ubdiag stop 2>/dev/null || true
 rm -f /dev/shm/ubdiag_shm_* 2>/dev/null || true
 
 if [ -n "$MOCK_BIN" ]; then
-    echo "[3/8] 运行 mooncake_store --help (DISABLE 模式,不应有 ubdiag 输出)..."
+    echo "[3/8] 运行 mooncake_master --help (DISABLE 模式,不应有 ubdiag 输出)..."
     OUTPUT=$($MOCK_BIN --help 2>&1 || true)
     if echo "$OUTPUT" | grep -qi "ubdiag\|PerfPoint\|shared memory"; then
         echo "  WARN: mooncake 输出中出现了 ubdiag 相关内容"
@@ -102,7 +126,7 @@ else
     echo "  SKIP: mooncake_store 未编译,跳过 mock 运行验证"
 fi
 
-# 确认 UBDIAG_DISABLE 生效:检查 mooncake_store 二进制是否引用 libubdiag
+# 确认 UBDIAG_DISABLE 生效:检查 mooncake_master 二进制是否引用 libubdiag
 echo ""
 echo "[3/8] 检查二进制是否链接 libubdiag (DISABLE 模式不应该链接)..."
 if [ -n "$MOCK_BIN" ]; then
@@ -122,10 +146,13 @@ echo "============================================================"
 echo "[4/8] Layer 1: vendored 模式 cmake 配置"
 echo "============================================================"
 mkdir build_vendored && cd build_vendored
-cmake .. -DMOONCAKE_ENABLE_UBDIAG=ON \
+if ! cmake .. -DMOONCAKE_ENABLE_UBDIAG=ON \
      -DWITH_STORE=ON -DWITH_TE=ON -DWITH_P2P_STORE=OFF \
-     -DSTORE_USE_ETCD=ON -DUSE_ETCD=ON 2>&1 | tee cmake_vendored.log | \
-     grep -iE "UbDiag|ubdiag|fetch|vendored|error|fatal" || true
+     -DSTORE_USE_ETCD=ON -DUSE_ETCD=ON 2>&1 | tee cmake_vendored.log; then
+    echo "FATAL: vendored 模式 CMake 配置失败，停止验证"
+    exit 1
+fi
+grep -iE "UbDiag|ubdiag|fetch|vendored|error|fatal" cmake_vendored.log || true
 
 echo ""
 echo "[4/8] 检查 FetchContent 拉取的 ubdiag 版本..."
@@ -150,15 +177,18 @@ echo ""
 echo "============================================================"
 echo "[5/8] Layer 1: vendored 模式编译"
 echo "============================================================"
-make -j$(nproc) mooncake_store 2>&1 | tail -10
-VENDORED_BIN=mooncake-store/src/mooncake_store
+if ! cmake --build . --parallel "$BUILD_JOBS" --target mooncake_master ubdiag \
+     2>&1 | tee build_vendored.log; then
+    echo "FATAL: vendored 模式 mooncake_master/ubdiag 编译失败"
+    exit 1
+fi
+VENDORED_BIN=mooncake-store/src/mooncake_master
 if [ -f "$VENDORED_BIN" ]; then
-    echo "  OK: mooncake_store 编译成功 (vendored 模式)"
+    echo "  OK: mooncake_master 编译成功 (vendored 模式)"
     file $VENDORED_BIN | head -1
 else
-    echo "  WARN: mooncake_store 未编译,尝试 transfer_engine"
-    make -j$(nproc) transfer_engine 2>&1 | tail -5
-    VENDORED_BIN=""
+    echo "FATAL: mooncake_master 编译命令成功，但可执行文件不存在"
+    exit 1
 fi
 
 echo ""
@@ -176,7 +206,7 @@ else
 fi
 
 echo ""
-echo "[5/8] 检查 mooncake_store 是否链接了 libubdiag..."
+echo "[5/8] 检查 mooncake_master 是否链接了 libubdiag..."
 if [ -n "$VENDORED_BIN" ]; then
     if ldd $VENDORED_BIN 2>/dev/null | grep -q "libubdiag"; then
         echo "  OK: vendored 模式下链接了 libubdiag"
@@ -228,7 +258,7 @@ if [ -z "$VENDORED_BIN" ] || [ ! -f "build_vendored/$VENDORED_BIN" ]; then
     exit 0
 fi
 
-FULL_BIN="build_vendored/$VENDORED_BIN"
+FULL_BIN="$MOONCAKE_DIR/build_vendored/$VENDORED_BIN"
 
 if ! command -v ubdiag >/dev/null 2>&1; then
     echo "  SKIP: ubdiag CLI 未安装"
@@ -243,10 +273,8 @@ sleep 1
 ubdiag status
 
 echo ""
-echo "[7/8] 运行 mooncake_store (5秒)..."
-cd build_vendored
+echo "[7/8] 运行 mooncake_master (5秒)..."
 timeout 5 $FULL_BIN --metadata_server=127.0.0.1:2379 --mode=dummy 2>&1 | tail -20 || true
-cd ..
 
 echo ""
 echo "[7/8] ubdiag show (汇总)..."
