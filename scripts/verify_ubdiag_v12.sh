@@ -12,6 +12,7 @@ UBDIAG_EXPECTED_TAG="v0.5.1"
 UBDIAG_EXPECTED_COMMIT="705c6c37da45df2be4bc64c134dca0b7f30b2113"
 BUILD_JOBS="${BUILD_JOBS:-$(nproc)}"
 REUSE_BUILD="${REUSE_BUILD:-0}"
+REQUIRE_DOCKER="${REQUIRE_DOCKER:-1}"
 VENDORED_UBDIAG_BIN=""
 VENDORED_UBDIAG_LIB_DIR=""
 DEFAULT_HOST="$(hostname -I 2>/dev/null | awk '{print $1}')"
@@ -31,6 +32,10 @@ if [ "$PROTOCOL" = "ub" ] && [ "$USE_UB" != "ON" ]; then
     exit 1
 fi
 DEVICE_NAME="${DEVICE_NAME:-bonding_dev_0}"
+URMA_LIBRARY="${URMA_LIBRARY:-/usr/lib64/liburma.so}"
+URMA_LIBRARY_REAL=""
+URMA_LIB_DIR=""
+URMA_PROVIDER_DIR=""
 NUM_KEYS="${NUM_KEYS:-1000}"
 READ_DURATION="${READ_DURATION:-20}"
 VERIFY_RESULTS_DIR="${VERIFY_RESULTS_DIR:-$WORKSPACE/verify_ubdiag_v12_$(date +%Y%m%d_%H%M%S)}"
@@ -40,6 +45,73 @@ UBDIAG_ACTIVE_CORE=""
 
 export PATH=/usr/local/bin:$PATH
 export LD_LIBRARY_PATH=/usr/local/lib64:/usr/lib64:${LD_LIBRARY_PATH:-}
+
+preflight_urma_runtime() {
+    [ "$USE_UB" = "ON" ] || return 0
+
+    if [ "$REQUIRE_DOCKER" = "1" ] && [ ! -f /.dockerenv ]; then
+        echo "FATAL: 当前终端不是 Docker 容器，拒绝在宿主机执行 UB 验证" >&2
+        echo "       请先进入验证容器；仅在明确进行宿主机调试时设置 REQUIRE_DOCKER=0" >&2
+        exit 1
+    fi
+
+    [ -e "$URMA_LIBRARY" ] || {
+        echo "FATAL: 指定的 URMA library 不存在: $URMA_LIBRARY" >&2
+        echo "       请在容器内安装完整的 umdk-urma-lib，或通过 URMA_LIBRARY 指定路径" >&2
+        exit 1
+    }
+
+    URMA_LIBRARY_REAL="$(readlink -f "$URMA_LIBRARY")"
+    URMA_LIB_DIR="$(dirname "$URMA_LIBRARY_REAL")"
+    URMA_PROVIDER_DIR="$URMA_LIB_DIR/urma"
+    export LD_LIBRARY_PATH="$URMA_LIB_DIR:/usr/local/lib64:/usr/lib64:${LD_LIBRARY_PATH:-}"
+
+    [ -d "$URMA_PROVIDER_DIR" ] || {
+        echo "FATAL: URMA provider 目录不存在: $URMA_PROVIDER_DIR" >&2
+        echo "       liburma=$URMA_LIBRARY_REAL；仅安装/复制 liburma.so 不足以运行 UB" >&2
+        exit 1
+    }
+
+    mapfile -t urma_providers < <(
+        find "$URMA_PROVIDER_DIR" -maxdepth 1 \
+            \( -type f -o -type l \) -name 'liburma*.so*' -print | sort
+    )
+    [ "${#urma_providers[@]}" -gt 0 ] || {
+        echo "FATAL: $URMA_PROVIDER_DIR 中没有 URMA provider 动态库" >&2
+        exit 1
+    }
+
+    local provider dependency_output
+    for provider in "${urma_providers[@]}"; do
+        if [ ! -r "$provider" ] || [ ! -x "$provider" ]; then
+            echo "FATAL: URMA provider 不可读或不可执行: $provider" >&2
+            exit 1
+        fi
+        dependency_output="$(ldd -r "$provider" 2>&1 || true)"
+        if grep -qE 'not found|undefined symbol' <<<"$dependency_output"; then
+            echo "FATAL: URMA provider 动态依赖不完整: $provider" >&2
+            echo "$dependency_output" >&2
+            exit 1
+        fi
+    done
+
+    echo "  OK: Docker 验证环境已确认"
+    echo "  OK: URMA runtime: $URMA_LIBRARY_REAL"
+    echo "  OK: URMA providers: ${#urma_providers[@]} 个 ($URMA_PROVIDER_DIR)"
+}
+
+verify_urma_cache() {
+    [ "$USE_UB" = "ON" ] || return 0
+
+    local cached_urma
+    cached_urma="$(sed -n 's/^URMA_LIBRARY:[^=]*=//p' CMakeCache.txt | tail -1)"
+    if [ "$(readlink -f "$cached_urma" 2>/dev/null || true)" != "$URMA_LIBRARY_REAL" ]; then
+        echo "FATAL: CMake 使用了错误的 URMA library: ${cached_urma:-未设置}" >&2
+        echo "       期望: $URMA_LIBRARY_REAL" >&2
+        exit 1
+    fi
+    echo "  OK: CMake 固定使用 $URMA_LIBRARY_REAL"
+}
 
 run_vendored_ubdiag() {
     [ -x "$VENDORED_UBDIAG_BIN" ] || {
@@ -98,6 +170,18 @@ run_benchmark_flow() {
 
     mkdir -p "$log_dir"
     stop_mooncake_processes
+
+    if [ "$USE_UB" = "ON" ]; then
+        local client_bin="$build_dir/mooncake-store/src/mooncake_client"
+        local loaded_urma
+        loaded_urma="$(ldd "$client_bin" | awk '/liburma\.so/{print $3; exit}')"
+        if [ "$(readlink -f "$loaded_urma" 2>/dev/null || true)" != "$URMA_LIBRARY_REAL" ]; then
+            echo "FATAL: mooncake_client 实际加载了错误的 URMA library: ${loaded_urma:-未找到}" >&2
+            echo "       期望: $URMA_LIBRARY_REAL" >&2
+            exit 1
+        fi
+        echo "  OK: mooncake_client runtime URMA: $URMA_LIBRARY_REAL"
+    fi
 
     env "${common_env[@]}" bash "$MOONCAKE_DIR/run_mooncake_store_master.sh" \
         >"$log_dir/01_master.log" 2>&1 &
@@ -214,6 +298,8 @@ echo "  时间: $(date '+%Y-%m-%d %H:%M:%S')"
 echo "  传输协议: PROTOCOL=$PROTOCOL USE_UB=$USE_UB DEVICE_NAME=$DEVICE_NAME"
 echo "============================================================"
 
+preflight_urma_runtime
+
 # ===== 0. 准备 =====
 echo ""
 echo "[0/8] 准备工作区..."
@@ -270,6 +356,7 @@ if [ "$REUSE_BUILD" = "1" ]; then
     echo "  REUSE_BUILD=1: 复用构建目录，仅重新执行 DISABLE 模式 CMake 配置"
     if ! cmake .. -DWITH_STORE=ON -DWITH_TE=ON -DWITH_P2P_STORE=OFF \
          -DSTORE_USE_ETCD=ON -DUSE_ETCD=ON -DUSE_UB="$USE_UB" \
+         -DURMA_LIBRARY="$URMA_LIBRARY" \
          -DBUILD_BENCHMARK=ON -DBUILD_UNIT_TESTS=OFF \
          -DBUILD_TESTS=OFF -DBUILD_EXAMPLES=OFF \
          2>&1 | tee cmake_mock.log; then
@@ -280,6 +367,7 @@ else
     mkdir build_mock && cd build_mock
     if ! cmake .. -DWITH_STORE=ON -DWITH_TE=ON -DWITH_P2P_STORE=OFF \
          -DSTORE_USE_ETCD=ON -DUSE_ETCD=ON -DUSE_UB="$USE_UB" \
+         -DURMA_LIBRARY="$URMA_LIBRARY" \
          -DBUILD_BENCHMARK=ON -DBUILD_UNIT_TESTS=OFF \
          -DBUILD_TESTS=OFF -DBUILD_EXAMPLES=OFF \
          2>&1 | tee cmake_mock.log; then
@@ -292,6 +380,7 @@ if [ "$USE_UB" = "ON" ] && ! grep -q '^USE_UB:BOOL=ON$' CMakeCache.txt; then
     echo "FATAL: DISABLE 构建没有启用 USE_UB" >&2
     exit 1
 fi
+verify_urma_cache
 
 echo ""
 echo "[1/8] 检查 FetchContent 拉取的 ubdiag 版本..."
@@ -431,6 +520,7 @@ if [ "$REUSE_BUILD" = "1" ]; then
     if ! cmake .. -DMOONCAKE_ENABLE_UBDIAG=ON \
          -DWITH_STORE=ON -DWITH_TE=ON -DWITH_P2P_STORE=OFF \
          -DSTORE_USE_ETCD=ON -DUSE_ETCD=ON -DUSE_UB="$USE_UB" \
+         -DURMA_LIBRARY="$URMA_LIBRARY" \
          -DBUILD_BENCHMARK=ON -DBUILD_UNIT_TESTS=OFF \
          -DBUILD_TESTS=OFF -DBUILD_EXAMPLES=OFF \
          2>&1 | tee cmake_vendored.log; then
@@ -442,6 +532,7 @@ else
     if ! cmake .. -DMOONCAKE_ENABLE_UBDIAG=ON \
          -DWITH_STORE=ON -DWITH_TE=ON -DWITH_P2P_STORE=OFF \
          -DSTORE_USE_ETCD=ON -DUSE_ETCD=ON -DUSE_UB="$USE_UB" \
+         -DURMA_LIBRARY="$URMA_LIBRARY" \
          -DBUILD_BENCHMARK=ON -DBUILD_UNIT_TESTS=OFF \
          -DBUILD_TESTS=OFF -DBUILD_EXAMPLES=OFF \
          2>&1 | tee cmake_vendored.log; then
@@ -454,6 +545,7 @@ if [ "$USE_UB" = "ON" ] && ! grep -q '^USE_UB:BOOL=ON$' CMakeCache.txt; then
     echo "FATAL: vendored 构建没有启用 USE_UB" >&2
     exit 1
 fi
+verify_urma_cache
 
 echo ""
 echo "[4/8] 检查 FetchContent 拉取的 ubdiag 版本..."
