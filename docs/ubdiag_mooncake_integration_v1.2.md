@@ -1,4 +1,4 @@
-# Mooncake UbDiag 集成重构方案 v1.2（终版）
+# Mooncake UbDiag 集成重构方案 v1.2
 
 > **基于**：atomgit liusiyu60/ubdiag master (705c6c3) + GitHub LinQuickDev/Mooncake supercache (2300894)
 > **核心原则**：ubdiag 侧改，Mooncake 侧尽量不侵入
@@ -42,7 +42,7 @@ static const bool _ubdiag_auto_init_ = []() { ... }();
 
 **验证**：`test_perf_point_disabled.cpp` 用 `static_assert(std::is_empty_v<UbDiag::PerfPoint>)` 确认编译器完全优化掉了空对象。
 
-### 1.2 新的集成架构（两层：DISABLE / FetchContent 编译）
+### 1.2 新的集成架构
 
 ```
                  Mooncake CMake 配置
@@ -71,7 +71,7 @@ static const bool _ubdiag_auto_init_ = []() { ... }();
 
 ### 1.3 为什么不再需要 Mooncake 的 mock 目录
 
-| 旧方案（v1.1） | 新方案（v1.2 终版） |
+| 旧方案 v1.1 | 新方案 v1.2 |
 |---|---|
 | Mooncake 维护 `mooncake-common/ubdiag-mock/auto_perf.h` | 删除，用 ubdiag 自己的 `auto_perf.h` + `UBDIAG_DISABLE` |
 | 手写 mock 可能和真实接口不同步 | 同一个头文件，`#ifdef` 切换，**永远同步** |
@@ -97,7 +97,7 @@ flowchart TD
     I --> Z
 ```
 
-### 1.5 运行期数据流（启用 ubdiag 时）
+### 1.5 运行期数据流
 
 ```mermaid
 sequenceDiagram
@@ -194,34 +194,17 @@ graph TD
     UBLOGGER --> UBLIB
 ```
 
-### 1.8 旧方案 → 新方案对比
+### 1.8 旧方案与新方案对比
 
-```
-旧方案（submodule + 三层 fallback,239 行）       新方案（FetchContent + UBDIAG_DISABLE,55 行）
-┌──────────────────────────────────────────┐     ┌──────────────────────────────────────────┐
-│ .gitmodules [submodule extern/ubdiag]    │     │ .gitmodules (ubdiag 条目已删除)           │
-│ extern/ubdiag/ (submodule 检出)          │     │                                          │
-├──────────────────────────────────────────┤     ├──────────────────────────────────────────┤
-│ Layer 1: add_subdirectory(extern/ubdiag) │     │ FetchContent 拉源码(始终拉)              │
-│   变量保存/恢复(50 行)                    │     │   UBDIAG_BUILD_TESTS(ubdiag 已改名)      │
-│   BUILD_TESTS 冲突 workaround             │     │   无变量冲突                              │
-│   include 路径修复(12 行)                 │     │   PROJECT_SOURCE_DIR(ubdiag 已修好)      │
-│   CMAKE_SOURCE_DIR 漂移 fix              │     │   无需修复                                │
-├──────────────────────────────────────────┤     ├──────────────────────────────────────────┤
-│ Layer 2: find_package(UbDiag)            │     │ (整个 Layer 2 删除)                      │
-│   系统路径查找(40 行)                     │     │                                          │
-│   CLI 查找(15 行)                        │     │                                          │
-│   配置查找(10 行)                        │     │                                          │
-├──────────────────────────────────────────┤     ├──────────────────────────────────────────┤
-│ Layer 3: mooncake-common/ubdiag-mock/    │     │ UBDIAG_DISABLE(ubdiag 自带)              │
-│   手写 mock 头文件(56 行)                │     │   constexpr 空函数(零维护)               │
-│   可能和真实接口不同步                    │     │   永远同步(同一个头文件)                 │
-│   RPM manifest(20 行)                    │     │                                          │
-├──────────────────────────────────────────┤     ├──────────────────────────────────────────┤
-│ 总计: 239 行 + mock 目录 56 行 = 295 行  │     │ 总计: 55 行,无 mock 目录                 │
-└──────────────────────────────────────────┘     └──────────────────────────────────────────┘
-        Mooncake 绕过 ubdiag 的 CMake 缺陷                ubdiag 自己修好了 + UBDIAG_DISABLE
-```
+| 维度 | 旧方案 v1.1 | 新方案 v1.2 |
+|------|------------|------------|
+| **依赖管理** | git submodule `extern/ubdiag/` | FetchContent 拉源码 |
+| **变量冲突** | 50 行 BUILD_TESTS 保存/恢复 workaround | 无冲突（ubdiag 改名 UBDIAG_BUILD_TESTS） |
+| **include 路径** | 12 行 CMAKE_SOURCE_DIR 漂移修复 | 无需修复（ubdiag 改用 PROJECT_SOURCE_DIR） |
+| **系统路径查找** | Layer 2 find_package + CLI 查找 65 行 | 整层删除 |
+| **Mock 机制** | mooncake-common/ubdiag-mock/ 手写 56 行 | UBDIAG_DISABLE（ubdiag 自带 constexpr 空函数） |
+| **接口同步** | mock 和真实接口可能不同步 | 永远同步（同一个头文件 `#ifdef` 切换） |
+| **代码总量** | 239 行 FindUbDiag.cmake + 56 行 mock = 295 行 | 55 行 FindUbDiag.cmake，无 mock 目录 |
 
 ---
 
@@ -287,7 +270,7 @@ Mooncake 通过 git submodule + 三层 FindUbDiag.cmake（239 行）引入 ubdia
 
 ---
 
-## 五、Mooncake 侧最终版 FindUbDiag.cmake
+## 五、Mooncake 侧 FindUbDiag.cmake
 
 ```cmake
 # mooncake-common/FindUbDiag.cmake v2 — 基于 UBDIAG_DISABLE 的两层集成
@@ -353,7 +336,7 @@ if(TARGET ubdiag_lib)
 endif()
 ```
 
-**关键区别（vs v1.1）**：
+**关键区别 vs v1.1**：
 - **始终 FetchContent 拉源码**（即使 DISABLE 模式，因为需要 ubdiag 的头文件）
 - DISABLE 模式不编译库，只取 `include/` 目录的头文件
 - 不再需要 `mooncake-common/ubdiag-mock/` 目录
@@ -423,16 +406,16 @@ endif()
 ## 十、版本演进
 
 ```
-v1.0（初版）    → 方向确定
-v1.1（校正版）  → 全量代码读取
-v1.2（终版）    → 基于 UBDIAG_DISABLE 机制,删 mock 目录,始终拉源码(本文档)
+v1.0    → 方向确定
+v1.1    → 全量代码读取，修正遗漏
+v1.2    → 基于 UBDIAG_DISABLE 机制，删 mock 目录，始终拉源码
 ```
 
 ---
 
 ## 附录 A：用户操作手册
 
-### A.1 快速开始（默认 DISABLE 模式）
+### A.1 快速开始
 
 ```bash
 git clone https://github.com/LinQuickDev/Mooncake.git
