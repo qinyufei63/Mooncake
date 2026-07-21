@@ -12,7 +12,7 @@ UBDIAG_VER_TAG="v0.5.1"
 BUILD_JOBS="${BUILD_JOBS:-$(nproc)}"
 
 export PATH=/usr/local/bin:$PATH
-export LD_LIBRARY_PATH=/usr/local/lib64:/usr/lib64:$LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=/usr/local/lib64:/usr/lib64:${LD_LIBRARY_PATH:-}
 
 echo "============================================================"
 echo "  Mooncake UbDiag v1.2 集成验证"
