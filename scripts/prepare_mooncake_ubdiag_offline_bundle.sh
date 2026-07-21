@@ -10,7 +10,10 @@ PACKAGE_FILE="$REPO_DIR/scripts/mooncake_ubdiag_container_packages.txt"
 GO_VERSION="${GO_VERSION:-1.25.10}"
 UBDIAG_EXPECTED_TAG="v0.5.1"
 UBDIAG_EXPECTED_COMMIT="705c6c37da45df2be4bc64c134dca0b7f30b2113"
+UBDIAG_REPOSITORY="https://github.com/LinQuickDev/ubdiag.git"
 UMDK_EXPECTED_TAG="v25.12.0.B081"
+UMDK_EXPECTED_COMMIT="a552148dc0a69df8810d23beb35d0d6e9dd913ea"
+UMDK_REPOSITORY="https://github.com/openeuler-mirror/umdk.git"
 
 fatal() {
     echo "FATAL: $*" >&2
@@ -26,6 +29,21 @@ first_git_source() {
         fi
     done
     return 1
+}
+
+clone_fixed_source() {
+    local name="$1"
+    local repository="$2"
+    local ref="$3"
+    local destination="$4"
+    echo "$name 本地源码不存在，宿主机从 $repository 拉取 $ref"
+    rm -rf "$destination"
+    mkdir -p "$(dirname "$destination")"
+    GIT_TERMINAL_PROMPT=0 git clone \
+        --branch "$ref" --depth 1 \
+        --recurse-submodules --shallow-submodules \
+        "$repository" "$destination" || \
+        fatal "$name 固定版本拉取失败: $repository $ref"
 }
 
 assert_clean_source() {
@@ -68,7 +86,7 @@ BUNDLE_DIR="$BUNDLE_REAL"
 mkdir -p "$BUNDLE_DIR"/{repos,rpms,logs,go-cache,go-build}
 rm -rf "$BUNDLE_DIR/repos"/* "$BUNDLE_DIR/rpms"/* \
        "$BUNDLE_DIR/go-cache"/* "$BUNDLE_DIR/go-build"/* \
-       "$BUNDLE_DIR/dnf-root"
+       "$BUNDLE_DIR/dnf-root" "$BUNDLE_DIR/source-downloads"
 rm -f "$BUNDLE_DIR"/go*.linux-*.tar.gz \
       "$BUNDLE_DIR"/go-module-cache.tar.gz \
       "$BUNDLE_DIR"/ubdiag-source.tar.gz \
@@ -89,17 +107,23 @@ HOST_ARCH="$(uname -m)"
 
 UBDIAG_SOURCE="${OFFLINE_UBDIAG_SOURCE_DIR:-}"
 if [ -z "$UBDIAG_SOURCE" ]; then
-    UBDIAG_SOURCE="$(first_git_source \
+    if ! UBDIAG_SOURCE="$(first_git_source \
         "$REPO_DIR/build_vendored/_deps/ubdiag-src" \
-        "$REPO_DIR/build_mock/_deps/ubdiag-src")" || \
-        fatal "找不到已拉取的 UbDiag 源码，请先确认 build_vendored/build_mock 的 _deps"
+        "$REPO_DIR/build_mock/_deps/ubdiag-src")"; then
+        UBDIAG_SOURCE="$BUNDLE_DIR/source-downloads/ubdiag"
+        clone_fixed_source "UbDiag" "$UBDIAG_REPOSITORY" \
+            "$UBDIAG_EXPECTED_TAG" "$UBDIAG_SOURCE"
+    fi
 fi
 UMDK_SOURCE="${OFFLINE_UMDK_SOURCE_DIR:-}"
 if [ -z "$UMDK_SOURCE" ]; then
-    UMDK_SOURCE="$(first_git_source \
+    if ! UMDK_SOURCE="$(first_git_source \
         "$REPO_DIR/build_vendored/_deps/urma-src" \
-        "$REPO_DIR/build_mock/_deps/urma-src")" || \
-        fatal "找不到已拉取的 UMDK 源码，请先确认 build_vendored/build_mock 的 _deps"
+        "$REPO_DIR/build_mock/_deps/urma-src")"; then
+        UMDK_SOURCE="$BUNDLE_DIR/source-downloads/urma"
+        clone_fixed_source "UMDK" "$UMDK_REPOSITORY" \
+            "$UMDK_EXPECTED_TAG" "$UMDK_SOURCE"
+    fi
 fi
 
 assert_clean_source "UbDiag" "$UBDIAG_SOURCE"
@@ -110,6 +134,8 @@ UBDIAG_COMMIT="$(git -C "$UBDIAG_SOURCE" rev-parse HEAD)"
 [ "$(git -C "$UBDIAG_SOURCE" describe --tags --exact-match 2>/dev/null || true)" = "$UBDIAG_EXPECTED_TAG" ] || \
     fatal "UbDiag HEAD 未命中 tag $UBDIAG_EXPECTED_TAG"
 UMDK_COMMIT="$(git -C "$UMDK_SOURCE" rev-parse HEAD)"
+[ "$UMDK_COMMIT" = "$UMDK_EXPECTED_COMMIT" ] || \
+    fatal "UMDK commit 不匹配: expected=$UMDK_EXPECTED_COMMIT actual=$UMDK_COMMIT"
 [ "$(git -C "$UMDK_SOURCE" rev-parse "$UMDK_EXPECTED_TAG^{commit}" 2>/dev/null || true)" = "$UMDK_COMMIT" ] || \
     fatal "UMDK HEAD 未命中 tag $UMDK_EXPECTED_TAG"
 
@@ -202,7 +228,8 @@ EOF
 )
 
 rm -rf "$BUNDLE_DIR/go-toolchain" "$BUNDLE_DIR/go-cache" \
-       "$BUNDLE_DIR/go-build" "$BUNDLE_DIR/dnf-root"
+       "$BUNDLE_DIR/go-build" "$BUNDLE_DIR/dnf-root" \
+       "$BUNDLE_DIR/source-downloads"
 
 echo "============================================================"
 echo "PASS: Mooncake UbDiag 离线依赖仓制作完成"
