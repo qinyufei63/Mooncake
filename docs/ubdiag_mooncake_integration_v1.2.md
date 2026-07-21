@@ -1,6 +1,6 @@
 # Mooncake UbDiag 集成重构方案 v1.2
 
-> **基于**：atomgit liusiyu60/ubdiag master (705c6c3) + GitHub LinQuickDev/Mooncake supercache (2300894)
+> **基于**：GitHub LinQuickDev/ubdiag master (`705c6c37`) + GitHub LinQuickDev/Mooncake supercache (`2300894`)
 > **核心原则**：ubdiag 侧改，Mooncake 侧尽量不侵入
 > **日期**：2026-07-21
 
@@ -10,7 +10,7 @@
 
 ### 1.1 核心机制：`UBDIAG_DISABLE`
 
-ubdiag master (705c6c3) 已内置编译期 mock 机制。`perf_point.h` 和 `auto_perf.h` 通过 `#ifdef UBDIAG_DISABLE` 控制：
+同步到 GitHub 的 ubdiag master (`705c6c37`) 已内置编译期 mock 机制。`perf_point.h` 和 `auto_perf.h` 通过 `#ifdef UBDIAG_DISABLE` 控制：
 
 ```cpp
 // perf_point.h (ubdiag master 已有)
@@ -247,25 +247,23 @@ Mooncake 通过 git submodule + 三层 FindUbDiag.cmake（239 行）引入 ubdia
 
 ---
 
-## 四、ubdiag 侧升级（6 项）
+## 四、ubdiag master 基线与兼容边界
 
-### 4.1 P0：`CMAKE_SOURCE_DIR` → `PROJECT_SOURCE_DIR`
+### 4.1 已具备：`UBDIAG_DISABLE`
 
-被 `add_subdirectory` 后 `CMAKE_SOURCE_DIR` 指向宿主根目录。改为 `PROJECT_SOURCE_DIR`（根目录）或 `CMAKE_CURRENT_SOURCE_DIR`（子目录）。
+同步提交 `705c6c37` 的 `perf_point.h` 和 `auto_perf.h` 已包含编译期空函数实现，两层模式不再依赖 Mooncake 自维护 mock。
 
-### 4.2 P0：`BUILD_TESTS`/`BUILD_EXAMPLES` 加前缀
+### 4.2 当前约束：UbDiag 仍使用 `CMAKE_SOURCE_DIR`
 
-改为 `UBDIAG_BUILD_TESTS` / `UBDIAG_BUILD_EXAMPLES`，消除与 Mooncake 的变量名冲突。
+UbDiag 作为 FetchContent 子项目时，`CMAKE_SOURCE_DIR` 会指向 Mooncake 根目录。Mooncake 在 `FetchContent_MakeAvailable` 后为 SDK、Runtime、Manager、Logger 和 CLI target 补充真实源码 include 路径；后续可在 UbDiag 主仓改为 `PROJECT_SOURCE_DIR` 后删除该兼容逻辑。
 
-### 4.3 P0：打 tag `v0.5.0`
+### 4.3 GitHub 镜像与提交固定
 
-### 4.4 P1：install 规则条件化
+AtomGit master 原样同步到 `https://github.com/LinQuickDev/ubdiag.git`，Mooncake 固定提交 `705c6c37da45df2be4bc64c134dca0b7f30b2113`，避免认证依赖和 master 漂移。
 
-加 `option(UBDIAG_ENABLE_INSTALL ...)`，让消费方控制是否安装 ubdiag。
+### 4.4 通用构建选项隔离
 
-### 4.5 P1：`UBDIAG_HAS_*` 特性检测宏
-
-### 4.6 P2：标准 `UbDiagConfig.cmake`
+真实模式在引入 UbDiag 前强制关闭 `BUILD_TESTS` 和 `BUILD_EXAMPLES`；DISABLE 模式只 populate 源码，不配置任何 UbDiag target。
 
 ---
 
@@ -283,31 +281,34 @@ if(TARGET UbDiag::ubdiag_lib)
 endif()
 
 option(MOONCAKE_ENABLE_UBDIAG "编译 ubdiag 真实库(否则用 UBDIAG_DISABLE 空函数)" OFF)
-set(MOONCAKE_UBDIAG_GIT_TAG "v0.5.0" CACHE STRING "ubdiag 版本")
+set(MOONCAKE_UBDIAG_GIT_REPOSITORY
+    "https://github.com/LinQuickDev/ubdiag.git" CACHE STRING "ubdiag Git repository")
+set(MOONCAKE_UBDIAG_GIT_TAG
+    "705c6c37da45df2be4bc64c134dca0b7f30b2113"
+    CACHE STRING "ubdiag 版本(tag/branch/commit)")
 set(MOONCAKE_UBDIAG_SOURCE_DIR "" CACHE PATH "本地 ubdiag 源码(离线用)")
 
 # ===== 始终 FetchContent 拉取 ubdiag 源码(头文件必备) =====
 include(FetchContent)
 
-if(MOONCAKE_UBDIAG_SOURCE_DIR AND EXISTS "${MOONCAKE_UBDIAG_SOURCE_DIR}/CMakeLists.txt")
-  FetchContent_Declare(ubdiag SOURCE_DIR ${MOONCAKE_UBDIAG_SOURCE_DIR})
-else()
-  FetchContent_Declare(ubdiag
-      GIT_REPOSITORY https://atomgit.com/liusiyu60/ubdiag.git
-      GIT_TAG ${MOONCAKE_UBDIAG_GIT_TAG})
-endif()
-
 # ===== Layer 0: DISABLE 模式(默认) =====
 if(NOT MOONCAKE_ENABLE_UBDIAG)
-  # 只拉源码(取头文件),不编译库
-  FetchContent_MakeAvailable(ubdiag)
+  # 只拉源码(取头文件),不把 ubdiag 子项目加入构建树
+  if(MOONCAKE_UBDIAG_SOURCE_DIR)
+    set(ubdiag_SOURCE_DIR "${MOONCAKE_UBDIAG_SOURCE_DIR}")
+  else()
+    FetchContent_Populate(ubdiag
+      GIT_REPOSITORY ${MOONCAKE_UBDIAG_GIT_REPOSITORY}
+      GIT_TAG ${MOONCAKE_UBDIAG_GIT_TAG}
+      SOURCE_DIR "${FETCHCONTENT_BASE_DIR}/ubdiag-src"
+      BINARY_DIR "${FETCHCONTENT_BASE_DIR}/ubdiag-build"
+      SUBBUILD_DIR "${FETCHCONTENT_BASE_DIR}/ubdiag-subbuild")
+  endif()
 
-  # 定义 UBDIAG_DISABLE:PerfPoint 变成 constexpr 空函数
-  add_compile_definitions(UBDIAG_DISABLE)
-
-  # 提供头文件路径给 Mooncake
+  # INTERFACE target 同时传播头文件路径和 UBDIAG_DISABLE
   add_library(ubdiag_mock INTERFACE)
   target_include_directories(ubdiag_mock INTERFACE ${ubdiag_SOURCE_DIR}/include)
+  target_compile_definitions(ubdiag_mock INTERFACE UBDIAG_DISABLE)
   add_library(UbDiag::ubdiag_lib ALIAS ubdiag_mock)
 
   set(MOONCAKE_UBDIAG_ACTIVE_LAYER "mock" CACHE STRING "" FORCE)
@@ -316,19 +317,33 @@ if(NOT MOONCAKE_ENABLE_UBDIAG)
 endif()
 
 # ===== Layer 1: 编译真实 ubdiag =====
-set(UBDIAG_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-set(UBDIAG_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+if(MOONCAKE_UBDIAG_SOURCE_DIR)
+  FetchContent_Declare(ubdiag SOURCE_DIR ${MOONCAKE_UBDIAG_SOURCE_DIR})
+else()
+  FetchContent_Declare(ubdiag
+    GIT_REPOSITORY ${MOONCAKE_UBDIAG_GIT_REPOSITORY}
+    GIT_TAG ${MOONCAKE_UBDIAG_GIT_TAG})
+endif()
+
+set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(UBDIAG_BUILD_SHARED ON CACHE BOOL "" FORCE)
 set(ENABLE_PERCENTILE ON CACHE BOOL "" FORCE)
 set(ENABLE_PERFLOG ON CACHE BOOL "" FORCE)
 set(ENABLE_OB_MEMORY OFF CACHE BOOL "" FORCE)
 set(ENABLE_OB_CACHE OFF CACHE BOOL "" FORCE)
 set(ENABLE_MEMPOINT OFF CACHE BOOL "" FORCE)
-set(UBDIAG_ENABLE_INSTALL ON CACHE BOOL "" FORCE)
-
 FetchContent_MakeAvailable(ubdiag)
 
 if(TARGET ubdiag_lib)
+  # 兼容当前 ubdiag master 作为 FetchContent 子项目时的源码 include 路径
+  foreach(target ubdiag_logger ubdiag_lib ubdiag_runtime_lib ubdiag_manager_lib)
+    if(TARGET ${target})
+      target_include_directories(${target} PUBLIC
+        $<BUILD_INTERFACE:${ubdiag_SOURCE_DIR}/include>
+        $<BUILD_INTERFACE:${ubdiag_SOURCE_DIR}/src>)
+    endif()
+  endforeach()
   add_library(UbDiag::ubdiag_lib ALIAS ubdiag_lib)
   set(MOONCAKE_UBDIAG_ACTIVE_LAYER "vendored" CACHE STRING "" FORCE)
   message(STATUS "UbDiag: FetchContent 编译 ${MOONCAKE_UBDIAG_GIT_TAG}(库+CLI)")
@@ -339,7 +354,7 @@ endif()
 - **始终 FetchContent 拉源码**（即使 DISABLE 模式，因为需要 ubdiag 的头文件）
 - DISABLE 模式不编译库，只取 `include/` 目录的头文件
 - 不再需要 `mooncake-common/ubdiag-mock/` 目录
-- `add_compile_definitions(UBDIAG_DISABLE)` 让 `perf_point.h` 退化成 constexpr 空函数
+- `target_compile_definitions(... INTERFACE UBDIAG_DISABLE)` 让所有消费者使用 constexpr 空函数
 
 ---
 
@@ -381,15 +396,12 @@ endif()
 
 ## 九、实施顺序
 
-### Step 1：ubdiag 侧升级（atomgit ubdiag 仓库）
+### Step 1：同步 UbDiag master
 
-1. `CMAKE_SOURCE_DIR` → `PROJECT_SOURCE_DIR`
-2. `BUILD_TESTS` → `UBDIAG_BUILD_TESTS`
-3. install 条件化
-4. `UBDIAG_HAS_*` 宏
-5. `UbDiagConfig.cmake`
-6. 打 tag `v0.5.0`
-7. 验证 `bash build.sh` 仍编译通过
+1. 确认 AtomGit/GitCode 同源 master 为 `705c6c37`。
+2. 将原始 master 历史推送到 `LinQuickDev/ubdiag:master`。
+3. Mooncake 固定该精确提交，不直接跟随浮动 master。
+4. 保留原始 UbDiag 作者和提交历史。
 
 ### Step 2：Mooncake 侧适配（qinyufei63/Mooncake）
 
@@ -435,7 +447,7 @@ ubdiag stop
 ### A.3 离线编译
 
 ```bash
-git clone https://atomgit.com/liusiyu60/ubdiag.git /path/to/ubdiag
+git clone https://github.com/LinQuickDev/ubdiag.git /path/to/ubdiag
 cmake .. -DMOONCAKE_UBDIAG_SOURCE_DIR=/path/to/ubdiag
 make -j$(nproc)
 ```
@@ -496,7 +508,8 @@ void doWork() {
 | 选项 | 默认 | 说明 |
 |------|------|------|
 | `MOONCAKE_ENABLE_UBDIAG` | OFF | OFF=UBDIAG_DISABLE 空函数；ON=编译真实 ubdiag |
-| `MOONCAKE_UBDIAG_GIT_TAG` | v0.5.0 | ubdiag 版本 |
+| `MOONCAKE_UBDIAG_GIT_REPOSITORY` | `https://github.com/LinQuickDev/ubdiag.git` | 默认源码镜像，避免 AtomGit 认证依赖 |
+| `MOONCAKE_UBDIAG_GIT_TAG` | `705c6c37...` | 固定到已同步 master 的精确提交，避免分支漂移 |
 | `MOONCAKE_UBDIAG_SOURCE_DIR` | 空 | 本地源码（离线用） |
 | `ENABLE_PERCENTILE` | ON | P99 计算 |
 | `ENABLE_PERFLOG` | ON | PerfLog 日志 |

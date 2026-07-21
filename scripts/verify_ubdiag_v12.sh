@@ -8,7 +8,7 @@ set -Eeuo pipefail
 
 WORKSPACE=/home/q00913006/project
 MOONCAKE_DIR=$WORKSPACE/mooncake-v12-verify
-UBDIAG_VER_TAG="v0.5.1"
+UBDIAG_EXPECTED_COMMIT="705c6c37da45df2be4bc64c134dca0b7f30b2113"
 BUILD_JOBS="${BUILD_JOBS:-$(nproc)}"
 
 export PATH=/usr/local/bin:$PATH
@@ -43,8 +43,9 @@ if [ ! -f mooncake-common/FindUbDiag.cmake ]; then
     exit 1
 fi
 echo "  OK: FindUbDiag.cmake 存在"
-echo "  配置的 ubdiag 版本:"
-grep "MOONCAKE_UBDIAG_GIT_TAG" mooncake-common/FindUbDiag.cmake
+echo "  配置的 ubdiag 仓库与版本:"
+grep -A2 -E "MOONCAKE_UBDIAG_GIT_REPOSITORY|MOONCAKE_UBDIAG_GIT_TAG" \
+    mooncake-common/FindUbDiag.cmake
 
 # ===== 1. Layer 0: DISABLE 模式 =====
 echo ""
@@ -64,10 +65,18 @@ echo "[1/8] 检查 FetchContent 拉取的 ubdiag 版本..."
 if [ -d "_deps/ubdiag-src" ]; then
     cd _deps/ubdiag-src
     TAG=$(git describe --tags 2>/dev/null || echo "unknown")
+    COMMIT_FULL=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
     COMMIT=$(git log --oneline -1 2>/dev/null || echo "unknown")
     echo "  tag: $TAG"
     echo "  commit: $COMMIT"
+    echo "  commit SHA: $COMMIT_FULL"
     grep "versionString" include/ubdiag/version.h 2>/dev/null || echo "  (version.h 无 versionString)"
+
+    if [ "$COMMIT_FULL" != "$UBDIAG_EXPECTED_COMMIT" ]; then
+        echo "FATAL: 期望 ubdiag $UBDIAG_EXPECTED_COMMIT,实际 $COMMIT_FULL"
+        exit 2
+    fi
+    echo "  OK: ubdiag commit 与 LinQuickDev/ubdiag master 镜像基线一致"
 
     if ! grep -q "UBDIAG_DISABLE" include/ubdiag/perf_point.h; then
         echo "FATAL: $TAG 的 perf_point.h 不包含 UBDIAG_DISABLE，无法验证 v1.2 DISABLE 层"
@@ -159,17 +168,20 @@ echo "[4/8] 检查 FetchContent 拉取的 ubdiag 版本..."
 if [ -d "_deps/ubdiag-src" ]; then
     cd _deps/ubdiag-src
     TAG=$(git describe --tags 2>/dev/null || echo "unknown")
+    COMMIT_FULL=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
     COMMIT=$(git log --oneline -1 2>/dev/null || echo "unknown")
     echo "  tag: $TAG"
     echo "  commit: $COMMIT"
+    echo "  commit SHA: $COMMIT_FULL"
     echo "  version.h:"
     grep "versionString\|versionMajor\|versionMinor\|versionPatch" include/ubdiag/version.h 2>/dev/null || echo "  (无 versionString)"
     cd ../..
 
-    if echo "$TAG" | grep -q "$UBDIAG_VER_TAG"; then
-        echo "  OK: 版本匹配 $UBDIAG_VER_TAG"
+    if [ "$COMMIT_FULL" = "$UBDIAG_EXPECTED_COMMIT" ]; then
+        echo "  OK: commit 匹配 $UBDIAG_EXPECTED_COMMIT"
     else
-        echo "  WARN: 期望 $UBDIAG_VER_TAG,实际 $TAG"
+        echo "FATAL: 期望 $UBDIAG_EXPECTED_COMMIT,实际 $COMMIT_FULL"
+        exit 2
     fi
 fi
 
@@ -233,7 +245,7 @@ echo ""
 echo "============================================================"
 echo "[6/8] 版本校验汇总"
 echo "============================================================"
-echo "  期望 ubdiag tag: $UBDIAG_VER_TAG"
+echo "  期望 ubdiag commit: $UBDIAG_EXPECTED_COMMIT"
 echo "  DISABLE 模式拉取:"
 (cd build_mock/_deps/ubdiag-src 2>/dev/null && git describe --tags 2>/dev/null) || echo "    (未拉取)"
 echo "  vendored 模式拉取:"
@@ -312,8 +324,8 @@ echo "  ubdiag CLI 编译: $([ -f build_vendored/_deps/ubdiag-build/src/cli/ubdi
 echo "  libubdiag 链接: $(ldd build_vendored/$VENDORED_BIN 2>/dev/null | grep -c libubdiag || echo 0) (应该 >0)"
 echo ""
 echo "版本校验:"
-echo "  期望: $UBDIAG_VER_TAG"
-echo "  实际: $(cd build_vendored/_deps/ubdiag-src 2>/dev/null && git describe --tags 2>/dev/null || echo "unknown")"
+echo "  期望: $UBDIAG_EXPECTED_COMMIT"
+echo "  实际: $(cd build_vendored/_deps/ubdiag-src 2>/dev/null && git rev-parse HEAD 2>/dev/null || echo "unknown")"
 echo ""
 echo "日志:"
 echo "  DISABLE cmake:  $MOONCAKE_DIR/build_mock/cmake_mock.log"
