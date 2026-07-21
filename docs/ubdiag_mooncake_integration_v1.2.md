@@ -1,6 +1,6 @@
 # Mooncake UbDiag 集成重构方案 v1.2
 
-> **基于**：GitHub LinQuickDev/ubdiag master (`705c6c37`) + GitHub LinQuickDev/Mooncake supercache (`2300894`)
+> **基于**：GitHub LinQuickDev/ubdiag `v0.5.1` (`705c6c37`) + GitHub LinQuickDev/Mooncake supercache (`2300894`)
 > **核心原则**：ubdiag 侧改，Mooncake 侧尽量不侵入
 > **日期**：2026-07-21
 
@@ -10,7 +10,7 @@
 
 ### 1.1 核心机制：`UBDIAG_DISABLE`
 
-同步到 GitHub 的 ubdiag master (`705c6c37`) 已内置编译期 mock 机制。`perf_point.h` 和 `auto_perf.h` 通过 `#ifdef UBDIAG_DISABLE` 控制：
+同步到 GitHub 的 ubdiag `v0.5.1` (`705c6c37`) 已内置编译期 mock 机制。`perf_point.h` 和 `auto_perf.h` 通过 `#ifdef UBDIAG_DISABLE` 控制：
 
 ```cpp
 // perf_point.h (ubdiag master 已有)
@@ -259,7 +259,7 @@ UbDiag 作为 FetchContent 子项目时，`CMAKE_SOURCE_DIR` 会指向 Mooncake 
 
 ### 4.3 GitHub 镜像与提交固定
 
-AtomGit master 原样同步到 `https://github.com/LinQuickDev/ubdiag.git`，Mooncake 固定提交 `705c6c37da45df2be4bc64c134dca0b7f30b2113`，避免认证依赖和 master 漂移。
+可用 master 原样同步到 `https://github.com/LinQuickDev/ubdiag.git` 并标记为 `v0.5.1`；该 tag 固定指向 `705c6c37da45df2be4bc64c134dca0b7f30b2113`，避免认证依赖和 master 漂移。
 
 ### 4.4 通用构建选项隔离
 
@@ -284,7 +284,7 @@ option(MOONCAKE_ENABLE_UBDIAG "编译 ubdiag 真实库(否则用 UBDIAG_DISABLE 
 set(MOONCAKE_UBDIAG_GIT_REPOSITORY
     "https://github.com/LinQuickDev/ubdiag.git" CACHE STRING "ubdiag Git repository")
 set(MOONCAKE_UBDIAG_GIT_TAG
-    "705c6c37da45df2be4bc64c134dca0b7f30b2113"
+    "v0.5.1"
     CACHE STRING "ubdiag 版本(tag/branch/commit)")
 set(MOONCAKE_UBDIAG_SOURCE_DIR "" CACHE PATH "本地 ubdiag 源码(离线用)")
 
@@ -399,8 +399,8 @@ endif()
 ### Step 1：同步 UbDiag master
 
 1. 确认 AtomGit/GitCode 同源 master 为 `705c6c37`。
-2. 将原始 master 历史推送到 `LinQuickDev/ubdiag:master`。
-3. Mooncake 固定该精确提交，不直接跟随浮动 master。
+2. 将原始 master 历史推送到 `LinQuickDev/ubdiag:master`，并将可用 master 标记为 `v0.5.1`。
+3. Mooncake 固定拉取 `v0.5.1`；验证脚本再校验其解析后的精确提交。
 4. 保留原始 UbDiag 作者和提交历史。
 
 ### Step 2：Mooncake 侧适配（qinyufei63/Mooncake）
@@ -509,7 +509,7 @@ void doWork() {
 |------|------|------|
 | `MOONCAKE_ENABLE_UBDIAG` | OFF | OFF=UBDIAG_DISABLE 空函数；ON=编译真实 ubdiag |
 | `MOONCAKE_UBDIAG_GIT_REPOSITORY` | `https://github.com/LinQuickDev/ubdiag.git` | 默认源码镜像，避免 AtomGit 认证依赖 |
-| `MOONCAKE_UBDIAG_GIT_TAG` | `705c6c37...` | 固定到已同步 master 的精确提交，避免分支漂移 |
+| `MOONCAKE_UBDIAG_GIT_TAG` | `v0.5.1` | 固定到 GitHub 镜像的可用版本 tag；解析提交为 `705c6c37...` |
 | `MOONCAKE_UBDIAG_SOURCE_DIR` | 空 | 本地源码（离线用） |
 | `ENABLE_PERCENTILE` | ON | P99 计算 |
 | `ENABLE_PERFLOG` | ON | PerfLog 日志 |
@@ -517,3 +517,21 @@ void doWork() {
 | `ENABLE_OB_CACHE` | OFF | OB 缓存命中率 |
 | `ENABLE_MEMPOINT` | OFF | MemPoint 内存观测 |
 | `UBDIAG_ENABLE_INSTALL` | ON | 安装 ubdiag 到系统 |
+
+### A.9 一键严格验证
+
+`scripts/verify_ubdiag_v12.sh` 会调用根目录的 4 个 helper：
+
+| 脚本 | 验证内容 |
+|---|---|
+| `run_mooncake_store_master.sh` | 使用真实受支持参数启动 Mooncake master |
+| `run_mooncake_store_client.sh` | 使用指定协议和设备启动 Mooncake client |
+| `write.sh` | 执行 `stress_cluster_bench` 写流程并要求退出码为 0 |
+| `read.sh` | 执行 `stress_cluster_bench` 读流程并要求退出码为 0 |
+
+一键脚本分别在 DISABLE 和 vendored 构建上运行完整 benchmark。vendored
+模式还会要求 UbDiag P99 表格非空，并将 `show`、`detail`、`core`、
+`watch`、`history` CSV 落盘；任一环节失败都会返回非零，不再输出假成功。
+
+已经完成两层编译时可传 `REUSE_BUILD=1`，脚本只增量补齐缺失的 client 或
+benchmark target，不重复全量编译。
