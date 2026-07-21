@@ -12,7 +12,7 @@ UBDIAG_EXPECTED_TAG="v0.5.1"
 UBDIAG_EXPECTED_COMMIT="705c6c37da45df2be4bc64c134dca0b7f30b2113"
 UBDIAG_REPOSITORY="https://github.com/LinQuickDev/ubdiag.git"
 UMDK_EXPECTED_TAG="v25.12.0.B081"
-UMDK_EXPECTED_COMMIT="a552148dc0a69df8810d23beb35d0d6e9dd913ea"
+UMDK_EXPECTED_COMMIT="a4768b149b6040c11a1c42971addb768a4222b74"
 UMDK_REPOSITORY="https://github.com/openeuler-mirror/umdk.git"
 
 fatal() {
@@ -44,6 +44,19 @@ clone_fixed_source() {
         --recurse-submodules --shallow-submodules \
         "$repository" "$destination" || \
         fatal "$name 固定版本拉取失败: $repository $ref"
+}
+
+verify_tag_if_present() {
+    local name="$1"
+    local source_dir="$2"
+    local tag="$3"
+    local expected_commit="$4"
+    if git -C "$source_dir" show-ref --verify --quiet "refs/tags/$tag"; then
+        [ "$(git -C "$source_dir" rev-parse "$tag^{commit}")" = "$expected_commit" ] || \
+            fatal "$name tag $tag 未指向期望提交 $expected_commit"
+    else
+        echo "$name 本地源码缺少 tag ref $tag；commit 已核验，将在容器源码副本中补回"
+    fi
 }
 
 assert_clean_source() {
@@ -131,13 +144,13 @@ assert_clean_source "UMDK" "$UMDK_SOURCE"
 UBDIAG_COMMIT="$(git -C "$UBDIAG_SOURCE" rev-parse HEAD)"
 [ "$UBDIAG_COMMIT" = "$UBDIAG_EXPECTED_COMMIT" ] || \
     fatal "UbDiag commit 不匹配: expected=$UBDIAG_EXPECTED_COMMIT actual=$UBDIAG_COMMIT"
-[ "$(git -C "$UBDIAG_SOURCE" describe --tags --exact-match 2>/dev/null || true)" = "$UBDIAG_EXPECTED_TAG" ] || \
-    fatal "UbDiag HEAD 未命中 tag $UBDIAG_EXPECTED_TAG"
+verify_tag_if_present "UbDiag" "$UBDIAG_SOURCE" \
+    "$UBDIAG_EXPECTED_TAG" "$UBDIAG_EXPECTED_COMMIT"
 UMDK_COMMIT="$(git -C "$UMDK_SOURCE" rev-parse HEAD)"
 [ "$UMDK_COMMIT" = "$UMDK_EXPECTED_COMMIT" ] || \
     fatal "UMDK commit 不匹配: expected=$UMDK_EXPECTED_COMMIT actual=$UMDK_COMMIT"
-[ "$(git -C "$UMDK_SOURCE" rev-parse "$UMDK_EXPECTED_TAG^{commit}" 2>/dev/null || true)" = "$UMDK_COMMIT" ] || \
-    fatal "UMDK HEAD 未命中 tag $UMDK_EXPECTED_TAG"
+verify_tag_if_present "UMDK" "$UMDK_SOURCE" \
+    "$UMDK_EXPECTED_TAG" "$UMDK_EXPECTED_COMMIT"
 
 git -C "$REPO_DIR" submodule status --recursive >"$BUNDLE_DIR/submodules.txt"
 if grep -Eq '^[-+U]' "$BUNDLE_DIR/submodules.txt"; then

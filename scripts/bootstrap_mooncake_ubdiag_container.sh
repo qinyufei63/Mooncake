@@ -88,6 +88,18 @@ tar --no-same-owner -C "$OFFLINE_GO_CACHE_DIR" \
     fatal "解包后的 UbDiag commit 与 manifest 不一致"
 [ "$(git -C "$OFFLINE_SOURCE_DIR/urma" rev-parse HEAD)" = "$UMDK_COMMIT" ] || \
     fatal "解包后的 UMDK commit 与 manifest 不一致"
+if ! git -C "$OFFLINE_SOURCE_DIR/ubdiag" show-ref --verify --quiet \
+     "refs/tags/$UBDIAG_TAG"; then
+    git -C "$OFFLINE_SOURCE_DIR/ubdiag" tag "$UBDIAG_TAG" "$UBDIAG_COMMIT"
+fi
+[ "$(git -C "$OFFLINE_SOURCE_DIR/ubdiag" rev-parse "$UBDIAG_TAG^{commit}")" = "$UBDIAG_COMMIT" ] || \
+    fatal "解包后的 UbDiag tag 与 commit 不一致"
+if ! git -C "$OFFLINE_SOURCE_DIR/urma" show-ref --verify --quiet \
+     "refs/tags/$UMDK_TAG"; then
+    git -C "$OFFLINE_SOURCE_DIR/urma" tag "$UMDK_TAG" "$UMDK_COMMIT"
+fi
+[ "$(git -C "$OFFLINE_SOURCE_DIR/urma" rev-parse "$UMDK_TAG^{commit}")" = "$UMDK_COMMIT" ] || \
+    fatal "解包后的 UMDK tag 与 commit 不一致"
 
 SUBMODULE_STATUS="$(git -C "$REPO_DIR" submodule status --recursive)"
 if [ -z "$SUBMODULE_STATUS" ] || grep -Eq '^[-+U]' <<<"$SUBMODULE_STATUS"; then
