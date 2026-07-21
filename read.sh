@@ -26,7 +26,7 @@ READ_DURATION="${READ_DURATION:-20}"
 READ_TIMEOUT_SEC="${READ_TIMEOUT_SEC:-180}"
 VERIFY="${VERIFY:-false}"
 
-export LD_LIBRARY_PATH="${BUILD_DIR}/_deps/ubdiag-build/src/sdk:${BUILD_DIR}/mooncake-store/src:${BUILD_DIR}/mooncake-transfer-engine/src:${BUILD_DIR}/mooncake-common:${BUILD_DIR}/mooncake-common/etcd:/usr/local/lib64:/usr/local/lib:/usr/lib64:${LD_LIBRARY_PATH:-}"
+export LD_LIBRARY_PATH="${BUILD_DIR}/_deps/ubdiag-build/src/sdk:${BUILD_DIR}/mooncake-store/src:${BUILD_DIR}/mooncake-transfer-engine/src:${BUILD_DIR}/mooncake-common:${BUILD_DIR}/mooncake-common/etcd:/usr/lib64:/usr/local/lib64:/usr/local/lib:${LD_LIBRARY_PATH:-}"
 export MC_STORE_CLIENT_SETUP_RETRIES="${MC_STORE_CLIENT_SETUP_RETRIES:-3}"
 export MC_STORE_CLIENT_METRIC_BANDWIDTH="${MC_STORE_CLIENT_METRIC_BANDWIDTH:-1}"
 export MC_TCP_BIND_ADDRESS="${MC_TCP_BIND_ADDRESS:-${LOCAL_HOSTNAME}}"

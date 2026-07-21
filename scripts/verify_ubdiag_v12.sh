@@ -44,7 +44,43 @@ CLIENT_PID=""
 UBDIAG_ACTIVE_CORE=""
 
 export PATH=/usr/local/bin:$PATH
-export LD_LIBRARY_PATH=/usr/local/lib64:/usr/lib64:${LD_LIBRARY_PATH:-}
+export PATH=/usr/local/go/bin:$PATH
+export LD_LIBRARY_PATH=/usr/lib64:/usr/local/lib64:/usr/local/lib:${LD_LIBRARY_PATH:-}
+export LIBRARY_PATH=/usr/lib64:/usr/local/lib64:/usr/local/lib:${LIBRARY_PATH:-}
+export PKG_CONFIG_PATH=/usr/lib64/pkgconfig:/usr/share/pkgconfig:/usr/local/lib64/pkgconfig:/usr/local/lib/pkgconfig:${PKG_CONFIG_PATH:-}
+export CMAKE_PREFIX_PATH=/usr/local:/usr:${CMAKE_PREFIX_PATH:-}
+export GOTOOLCHAIN="${GOTOOLCHAIN:-auto}"
+
+preflight_build_environment() {
+    if [ "$REQUIRE_DOCKER" = "1" ] && [ ! -f /.dockerenv ]; then
+        echo "FATAL: 当前终端不是 Docker 容器，拒绝执行验证" >&2
+        exit 1
+    fi
+
+    local command_name
+    local required_commands=(
+        git cmake gcc g++ make go python3 python3-config pkg-config
+        rpmbuild file ldd readelf timeout sha256sum curl urma_admin
+    )
+    for command_name in "${required_commands[@]}"; do
+        command -v "$command_name" >/dev/null 2>&1 || {
+            echo "FATAL: 容器缺少命令 $command_name，请先运行 scripts/bootstrap_mooncake_ubdiag_container.sh" >&2
+            exit 1
+        }
+    done
+    local cmake_search_roots=()
+    local search_root
+    for search_root in /usr/local/lib /usr/local/lib64 /usr/lib /usr/lib64; do
+        [ -d "$search_root" ] && cmake_search_roots+=("$search_root")
+    done
+    find "${cmake_search_roots[@]}" -type f \
+        \( -name 'yalantinglibsConfig.cmake' -o -name 'yalantinglibs-config.cmake' \) \
+        -print -quit | grep -q . || {
+        echo "FATAL: 未找到 yalantinglibs CMake package，请先执行容器 bootstrap" >&2
+        exit 1
+    }
+    echo "  OK: Mooncake/benchmark/RPM 构建工具链已确认"
+}
 
 preflight_urma_runtime() {
     [ "$USE_UB" = "ON" ] || return 0
@@ -64,7 +100,7 @@ preflight_urma_runtime() {
     URMA_LIBRARY_REAL="$(readlink -f "$URMA_LIBRARY")"
     URMA_LIB_DIR="$(dirname "$URMA_LIBRARY_REAL")"
     URMA_PROVIDER_DIR="$URMA_LIB_DIR/urma"
-    export LD_LIBRARY_PATH="$URMA_LIB_DIR:/usr/local/lib64:/usr/lib64:${LD_LIBRARY_PATH:-}"
+    export LD_LIBRARY_PATH="$URMA_LIB_DIR:/usr/lib64:/usr/local/lib64:/usr/local/lib:${LD_LIBRARY_PATH:-}"
 
     [ -d "$URMA_PROVIDER_DIR" ] || {
         echo "FATAL: URMA provider 目录不存在: $URMA_PROVIDER_DIR" >&2
@@ -94,6 +130,22 @@ preflight_urma_runtime() {
             exit 1
         fi
     done
+
+    local urma_devices
+    if ! urma_devices="$(URMA_LOG_LEVEL=error urma_admin show --brief 2>&1)"; then
+        echo "$urma_devices" >&2
+        echo "FATAL: urma_admin 无法初始化 URMA runtime" >&2
+        exit 1
+    fi
+    if ! grep -q "$DEVICE_NAME" <<<"$urma_devices"; then
+        echo "$urma_devices" >&2
+        echo "FATAL: 容器内未找到 benchmark 指定设备: $DEVICE_NAME" >&2
+        exit 1
+    fi
+    if [ "$(ulimit -l)" != "unlimited" ]; then
+        echo "FATAL: 容器 memlock 不是 unlimited: $(ulimit -l)" >&2
+        exit 1
+    fi
 
     echo "  OK: Docker 验证环境已确认"
     echo "  OK: URMA runtime: $URMA_LIBRARY_REAL"
@@ -298,6 +350,7 @@ echo "  时间: $(date '+%Y-%m-%d %H:%M:%S')"
 echo "  传输协议: PROTOCOL=$PROTOCOL USE_UB=$USE_UB DEVICE_NAME=$DEVICE_NAME"
 echo "============================================================"
 
+preflight_build_environment
 preflight_urma_runtime
 
 # ===== 0. 准备 =====
@@ -357,6 +410,7 @@ if [ "$REUSE_BUILD" = "1" ]; then
     if ! cmake .. -DWITH_STORE=ON -DWITH_TE=ON -DWITH_P2P_STORE=OFF \
          -DSTORE_USE_ETCD=ON -DUSE_ETCD=ON -DUSE_UB="$USE_UB" \
          -DURMA_LIBRARY="$URMA_LIBRARY" \
+         -DWITH_STORE_RUST=OFF \
          -DBUILD_BENCHMARK=ON -DBUILD_UNIT_TESTS=OFF \
          -DBUILD_TESTS=OFF -DBUILD_EXAMPLES=OFF \
          2>&1 | tee cmake_mock.log; then
@@ -368,6 +422,7 @@ else
     if ! cmake .. -DWITH_STORE=ON -DWITH_TE=ON -DWITH_P2P_STORE=OFF \
          -DSTORE_USE_ETCD=ON -DUSE_ETCD=ON -DUSE_UB="$USE_UB" \
          -DURMA_LIBRARY="$URMA_LIBRARY" \
+         -DWITH_STORE_RUST=OFF \
          -DBUILD_BENCHMARK=ON -DBUILD_UNIT_TESTS=OFF \
          -DBUILD_TESTS=OFF -DBUILD_EXAMPLES=OFF \
          2>&1 | tee cmake_mock.log; then
@@ -521,6 +576,7 @@ if [ "$REUSE_BUILD" = "1" ]; then
          -DWITH_STORE=ON -DWITH_TE=ON -DWITH_P2P_STORE=OFF \
          -DSTORE_USE_ETCD=ON -DUSE_ETCD=ON -DUSE_UB="$USE_UB" \
          -DURMA_LIBRARY="$URMA_LIBRARY" \
+         -DWITH_STORE_RUST=OFF \
          -DBUILD_BENCHMARK=ON -DBUILD_UNIT_TESTS=OFF \
          -DBUILD_TESTS=OFF -DBUILD_EXAMPLES=OFF \
          2>&1 | tee cmake_vendored.log; then
@@ -533,6 +589,7 @@ else
          -DWITH_STORE=ON -DWITH_TE=ON -DWITH_P2P_STORE=OFF \
          -DSTORE_USE_ETCD=ON -DUSE_ETCD=ON -DUSE_UB="$USE_UB" \
          -DURMA_LIBRARY="$URMA_LIBRARY" \
+         -DWITH_STORE_RUST=OFF \
          -DBUILD_BENCHMARK=ON -DBUILD_UNIT_TESTS=OFF \
          -DBUILD_TESTS=OFF -DBUILD_EXAMPLES=OFF \
          2>&1 | tee cmake_vendored.log; then

@@ -15,7 +15,7 @@ GLOBAL_FILE_SEGMENT_SIZE="${GLOBAL_FILE_SEGMENT_SIZE:-9223372036854775807}"
 DEFAULT_KV_LEASE_TTL="${DEFAULT_KV_LEASE_TTL:-300000}"
 ENABLE_OFFLOAD="${ENABLE_OFFLOAD:-false}"
 
-export LD_LIBRARY_PATH="${BUILD_DIR}/_deps/ubdiag-build/src/sdk:${BUILD_DIR}/mooncake-store/src:${BUILD_DIR}/mooncake-transfer-engine/src:${BUILD_DIR}/mooncake-common:${BUILD_DIR}/mooncake-common/etcd:/usr/local/lib64:/usr/local/lib:/usr/lib64:${LD_LIBRARY_PATH:-}"
+export LD_LIBRARY_PATH="${BUILD_DIR}/_deps/ubdiag-build/src/sdk:${BUILD_DIR}/mooncake-store/src:${BUILD_DIR}/mooncake-transfer-engine/src:${BUILD_DIR}/mooncake-common:${BUILD_DIR}/mooncake-common/etcd:/usr/lib64:/usr/local/lib64:/usr/local/lib:${LD_LIBRARY_PATH:-}"
 export MC_LOG_ENABLE="${MC_LOG_ENABLE:-on}"
 export MC_LOG_LEVEL="${MC_LOG_LEVEL:-INFO}"
 export MC_LOG_DIR="${MC_LOG_DIR:-${PROJECT_DIR}/logs/mooncake}"
