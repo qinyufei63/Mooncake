@@ -21,6 +21,8 @@ echo "============================================================"
 # ===== 0. 准备 =====
 echo ""
 echo "[0/8] 准备工作区..."
+# 先回到 workspace 根目录(避免 rm -rf 删掉自己所在的目录)
+cd $WORKSPACE
 rm -rf $MOONCAKE_DIR
 git clone -b supercache_dev_ubdiag https://github.com/qinyufei63/Mooncake.git $MOONCAKE_DIR --depth=1
 cd $MOONCAKE_DIR
