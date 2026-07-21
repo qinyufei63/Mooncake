@@ -5,6 +5,9 @@ set -Eeuo pipefail
 
 REPO_DIR="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 DEVICE_NAME="${DEVICE_NAME:-bonding_dev_0}"
+OFFLINE_BUNDLE_DIR="${OFFLINE_BUNDLE_DIR:-$(dirname "$REPO_DIR")/mooncake-ubdiag-offline-bundle}"
+OFFLINE_SOURCE_DIR="${OFFLINE_SOURCE_DIR:-/opt/mooncake-offline-sources}"
+OFFLINE_GO_CACHE_DIR="${OFFLINE_GO_CACHE_DIR:-/opt/mooncake-go-cache}"
 ENV_FILE="/etc/profile.d/mooncake-ubdiag-v12.sh"
 
 fatal() {
@@ -15,68 +18,119 @@ fatal() {
 [ "$(id -u)" -eq 0 ] || fatal "请以 root 用户执行容器初始化"
 [ -f /.dockerenv ] || fatal "当前终端不是 Docker 容器"
 [ -d "$REPO_DIR/.git" ] || fatal "Mooncake 仓库不存在: $REPO_DIR"
+[ -r "$OFFLINE_BUNDLE_DIR/manifest.env" ] || \
+    fatal "离线依赖仓不存在: $OFFLINE_BUNDLE_DIR（请先在宿主机运行 prepare_mooncake_ubdiag_offline_bundle.sh）"
+[ -r "$OFFLINE_BUNDLE_DIR/SHA256SUMS" ] || fatal "离线依赖仓缺少 SHA256SUMS"
 
 # shellcheck disable=SC1091
 source /etc/os-release
 [ "${ID,,}" = "openeuler" ] || fatal "仅支持 openEuler，当前系统: ${ID:-unknown}"
+# shellcheck disable=SC1090
+source "$OFFLINE_BUNDLE_DIR/manifest.env"
+[ "${MOONCAKE_OFFLINE_BUNDLE_VERSION:-}" = "2" ] || \
+    fatal "不支持的离线依赖仓版本: ${MOONCAKE_OFFLINE_BUNDLE_VERSION:-missing}"
+[ "${CONTAINER_RELEASEVER:-}" = "$VERSION_ID" ] || \
+    fatal "离线仓与容器系统版本不一致: bundle=${CONTAINER_RELEASEVER:-missing} container=$VERSION_ID"
+[ "${CONTAINER_OS_RELEASE_SHA256:-}" = "$(sha256sum /etc/os-release | awk '{print $1}')" ] || \
+    fatal "离线仓不是按当前容器的 openEuler 版本制作"
+[ "${CONTAINER_ARCH:-}" = "$(uname -m)" ] || \
+    fatal "离线仓与容器架构不一致: bundle=${CONTAINER_ARCH:-missing} container=$(uname -m)"
 
 echo "============================================================"
 echo "  Mooncake UbDiag v1.2 容器依赖初始化"
 echo "  repo: $REPO_DIR"
+echo "  offline bundle: $OFFLINE_BUNDLE_DIR"
 echo "  device: $DEVICE_NAME"
 echo "============================================================"
 
-# Packages not covered by dependencies.sh but required by container operation,
-# UB runtime validation, the benchmark verifier, or RPM packaging.
-dnf makecache
-dnf install -y \
-    ca-certificates curl wget git \
-    gcc gcc-c++ make cmake ninja-build \
-    pkgconf-pkg-config \
-    python3 python3-devel python3-pip \
-    gflags-devel libzstd-devel zlib-devel \
-    rpm rpm-build rpm-devel \
-    file findutils which procps-ng iproute lsof strace \
-    umdk-urma-lib umdk-urma-devel umdk-urma-tools
+# Verify the complete bundle before installing any payload. The only dnf call
+# below consumes local RPM paths with every repository disabled.
+(
+    cd "$OFFLINE_BUNDLE_DIR"
+    sha256sum -c SHA256SUMS
+)
+mapfile -t offline_rpms < <(
+    find "$OFFLINE_BUNDLE_DIR/rpms" -maxdepth 1 -type f -name '*.rpm' | sort
+)
+[ "${#offline_rpms[@]}" -eq "${RPM_COUNT:-0}" ] || \
+    fatal "离线 RPM 数量不匹配: manifest=${RPM_COUNT:-missing} actual=${#offline_rpms[@]}"
+dnf --disablerepo='*' install -y "${offline_rpms[@]}"
 
-if [ ! -r /usr/include/asio.hpp ] && [ ! -r /usr/local/include/asio.hpp ]; then
-    dnf install -y asio-devel
+case "$(uname -m)" in
+    aarch64) expected_go_arch=arm64 ;;
+    x86_64) expected_go_arch=amd64 ;;
+    *) fatal "不支持的 Go 架构: $(uname -m)" ;;
+esac
+[ "$GO_TARBALL" = "go${GO_VERSION}.linux-${expected_go_arch}.tar.gz" ] || \
+    fatal "Go 离线包名称异常: $GO_TARBALL"
+[ -r "$OFFLINE_BUNDLE_DIR/$GO_TARBALL" ] || fatal "缺少 Go 离线包: $GO_TARBALL"
+[ -r "$OFFLINE_BUNDLE_DIR/go-module-cache.tar.gz" ] || fatal "缺少 Go module cache"
+[ -r "$OFFLINE_BUNDLE_DIR/ubdiag-source.tar.gz" ] || fatal "缺少 UbDiag 源码包"
+[ -r "$OFFLINE_BUNDLE_DIR/umdk-source.tar.gz" ] || fatal "缺少 UMDK 源码包"
+
+[ "/usr/local/go" != "/usr/local" ] || fatal "Go 安装路径保护失败"
+rm -rf /usr/local/go
+tar -C /usr/local -xzf "$OFFLINE_BUNDLE_DIR/$GO_TARBALL"
+
+[ "$OFFLINE_SOURCE_DIR" != "/" ] || fatal "OFFLINE_SOURCE_DIR 不能是根目录"
+[ "$OFFLINE_GO_CACHE_DIR" != "/" ] || fatal "OFFLINE_GO_CACHE_DIR 不能是根目录"
+rm -rf "$OFFLINE_SOURCE_DIR" "$OFFLINE_GO_CACHE_DIR"
+mkdir -p "$OFFLINE_SOURCE_DIR/ubdiag" "$OFFLINE_SOURCE_DIR/urma" \
+         "$OFFLINE_GO_CACHE_DIR/build"
+tar --no-same-owner -C "$OFFLINE_SOURCE_DIR/ubdiag" \
+    -xzf "$OFFLINE_BUNDLE_DIR/ubdiag-source.tar.gz"
+tar --no-same-owner -C "$OFFLINE_SOURCE_DIR/urma" \
+    -xzf "$OFFLINE_BUNDLE_DIR/umdk-source.tar.gz"
+tar --no-same-owner -C "$OFFLINE_GO_CACHE_DIR" \
+    -xzf "$OFFLINE_BUNDLE_DIR/go-module-cache.tar.gz"
+
+[ "$(git -C "$OFFLINE_SOURCE_DIR/ubdiag" rev-parse HEAD)" = "$UBDIAG_COMMIT" ] || \
+    fatal "解包后的 UbDiag commit 与 manifest 不一致"
+[ "$(git -C "$OFFLINE_SOURCE_DIR/urma" rev-parse HEAD)" = "$UMDK_COMMIT" ] || \
+    fatal "解包后的 UMDK commit 与 manifest 不一致"
+
+SUBMODULE_STATUS="$(git -C "$REPO_DIR" submodule status --recursive)"
+if [ -z "$SUBMODULE_STATUS" ] || grep -Eq '^[-+U]' <<<"$SUBMODULE_STATUS"; then
+    echo "$SUBMODULE_STATUS" >&2
+    fatal "Mooncake 子模块未完整初始化或不在记录版本；离线容器不会执行 git submodule update"
 fi
 
-# Use Mooncake's canonical dependency installer for the remaining C/C++
-# libraries, submodules, yalantinglibs, and the required Go toolchain.
-cd "$REPO_DIR"
-export GOPROXY="${GOPROXY:-https://goproxy.cn,https://goproxy.io,direct}"
-export GOTOOLCHAIN=auto
-bash dependencies.sh -y
-export PATH="/usr/local/go/bin:/usr/local/bin:$PATH"
-hash -r
-
-# STORE_USE_ETCD and USE_ETCD build this Go module. Download its declared
-# toolchain and modules during bootstrap rather than in the Mooncake build.
-(cd mooncake-common/etcd && go mod download)
-
-cat >"$ENV_FILE" <<'EOF'
-export PATH="/usr/local/go/bin:/usr/local/bin:${PATH}"
+cat >"$ENV_FILE" <<EOF
+export PATH="/usr/local/go/bin:/usr/local/bin:\${PATH}"
 export URMA_LIBRARY="/usr/lib64/liburma.so"
-export LD_LIBRARY_PATH="/usr/lib64:/usr/local/lib64:/usr/local/lib:${LD_LIBRARY_PATH:-}"
-export LIBRARY_PATH="/usr/lib64:/usr/local/lib64:/usr/local/lib:${LIBRARY_PATH:-}"
-export PKG_CONFIG_PATH="/usr/lib64/pkgconfig:/usr/share/pkgconfig:/usr/local/lib64/pkgconfig:/usr/local/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
-export CMAKE_PREFIX_PATH="/usr/local:/usr:${CMAKE_PREFIX_PATH:-}"
-export GOPROXY="${GOPROXY:-https://goproxy.cn,https://goproxy.io,direct}"
-export GOTOOLCHAIN="${GOTOOLCHAIN:-auto}"
-export no_proxy="${no_proxy:-127.0.0.1,localhost,local,.local,192.168.0.0/16,10.0.0.0/8,172.16.0.0/12}"
+export LD_LIBRARY_PATH="/usr/lib64:/usr/local/lib64:/usr/local/lib:\${LD_LIBRARY_PATH:-}"
+export LIBRARY_PATH="/usr/lib64:/usr/local/lib64:/usr/local/lib:\${LIBRARY_PATH:-}"
+export PKG_CONFIG_PATH="/usr/lib64/pkgconfig:/usr/share/pkgconfig:/usr/local/lib64/pkgconfig:/usr/local/lib/pkgconfig:\${PKG_CONFIG_PATH:-}"
+export CMAKE_PREFIX_PATH="/usr/local:/usr:\${CMAKE_PREFIX_PATH:-}"
+export MOONCAKE_OFFLINE=1
+export MOONCAKE_UBDIAG_SOURCE_DIR="$OFFLINE_SOURCE_DIR/ubdiag"
+export FETCHCONTENT_SOURCE_DIR_URMA="$OFFLINE_SOURCE_DIR/urma"
+export FETCHCONTENT_FULLY_DISCONNECTED=ON
+export GOPROXY=off
+export GOSUMDB=off
+export GOTOOLCHAIN=local
+export GOMODCACHE="$OFFLINE_GO_CACHE_DIR/pkg/mod"
+export GOCACHE="$OFFLINE_GO_CACHE_DIR/build"
 EOF
 
 # shellcheck disable=SC1090
 source "$ENV_FILE"
+hash -r
+ldconfig
+
+cd "$REPO_DIR"
+rm -rf /tmp/mooncake-ylt-build
+cmake -S extern/yalantinglibs -B /tmp/mooncake-ylt-build \
+    -DBUILD_EXAMPLES=OFF -DBUILD_BENCHMARK=OFF -DBUILD_UNIT_TESTS=OFF
+cmake --build /tmp/mooncake-ylt-build --parallel "$(nproc)"
+cmake --install /tmp/mooncake-ylt-build
 ldconfig
 
 echo ""
 echo "[1/5] 检查构建和打包工具..."
 required_commands=(
     bash git cmake gcc g++ make go python3 python3-config pkg-config
-    rpmbuild file ldd readelf timeout sha256sum curl
+    dnf rpm rpmbuild file ldd readelf timeout sha256sum curl
 )
 for command_name in "${required_commands[@]}"; do
     command -v "$command_name" >/dev/null 2>&1 || fatal "缺少命令: $command_name"
@@ -86,6 +140,13 @@ gcc --version | head -1
 go version
 python3 --version
 rpmbuild --version
+[ "$(go env GOVERSION)" = "go$GO_VERSION" ] || \
+    fatal "Go 版本不匹配: expected=go$GO_VERSION actual=$(go env GOVERSION)"
+[ "$(go env GOPROXY)" = "off" ] || fatal "Go 仍可能联网: GOPROXY=$(go env GOPROXY)"
+[ "$(go env GOTOOLCHAIN)" = "local" ] || \
+    fatal "Go 仍可能下载工具链: GOTOOLCHAIN=$(go env GOTOOLCHAIN)"
+(cd "$REPO_DIR/mooncake-common/etcd" && go mod verify && go list -mod=readonly all >/dev/null)
+echo "  OK: Go 工具链和 etcd module cache 已通过完全离线检查"
 
 echo ""
 echo "[2/5] 检查 Mooncake 必需头文件和 CMake package..."
@@ -109,6 +170,14 @@ done
     fatal "缺少 ASIO 头文件 asio.hpp"
 [ -r /usr/include/jsoncpp/json/json.h ] || [ -r /usr/include/json/json.h ] || \
     fatal "缺少 JsonCpp 头文件 json.h"
+[ -r "$MOONCAKE_UBDIAG_SOURCE_DIR/include/ubdiag/perf_point.h" ] || \
+    fatal "离线 UbDiag 源码不完整: $MOONCAKE_UBDIAG_SOURCE_DIR"
+[ -r "$FETCHCONTENT_SOURCE_DIR_URMA/CMakeLists.txt" ] || \
+    fatal "离线 UMDK 源码不完整: $FETCHCONTENT_SOURCE_DIR_URMA"
+[ "$(git -C "$MOONCAKE_UBDIAG_SOURCE_DIR" rev-parse HEAD)" = "$UBDIAG_COMMIT" ] || \
+    fatal "离线 UbDiag 源码版本漂移"
+[ "$(git -C "$FETCHCONTENT_SOURCE_DIR_URMA" rev-parse HEAD)" = "$UMDK_COMMIT" ] || \
+    fatal "离线 UMDK 源码版本漂移"
 cmake_search_roots=()
 for search_root in /usr/local/lib /usr/local/lib64 /usr/lib /usr/lib64; do
     [ -d "$search_root" ] && cmake_search_roots+=("$search_root")
@@ -225,7 +294,10 @@ grep -q "$DEVICE_NAME" /tmp/mooncake_urma_devices.log || {
 echo ""
 echo "============================================================"
 echo "  PASS: Mooncake UbDiag 容器依赖、环境变量和 URMA 均已就绪"
+echo "  network mode: fully offline"
 echo "  environment: $ENV_FILE"
+echo "  UbDiag source: $MOONCAKE_UBDIAG_SOURCE_DIR ($UBDIAG_COMMIT)"
+echo "  UMDK source: $FETCHCONTENT_SOURCE_DIR_URMA ($UMDK_COMMIT)"
 echo "  URMA runtime: $URMA_REAL"
 echo "  URMA providers: ${#providers[@]}"
 echo "  UB device: $DEVICE_NAME"

@@ -13,8 +13,13 @@ UBDIAG_EXPECTED_COMMIT="705c6c37da45df2be4bc64c134dca0b7f30b2113"
 BUILD_JOBS="${BUILD_JOBS:-$(nproc)}"
 REUSE_BUILD="${REUSE_BUILD:-0}"
 REQUIRE_DOCKER="${REQUIRE_DOCKER:-1}"
+OFFLINE_MODE="${MOONCAKE_OFFLINE:-0}"
+OFFLINE_UBDIAG_SOURCE_DIR="${MOONCAKE_UBDIAG_SOURCE_DIR:-}"
+OFFLINE_URMA_SOURCE_DIR="${FETCHCONTENT_SOURCE_DIR_URMA:-}"
 VENDORED_UBDIAG_BIN=""
 VENDORED_UBDIAG_LIB_DIR=""
+MOCK_UBDIAG_SOURCE_CHECK=""
+VENDORED_UBDIAG_SOURCE_CHECK=""
 DEFAULT_HOST="$(hostname -I 2>/dev/null | awk '{print $1}')"
 MASTER_HOST="${MASTER_HOST:-${DEFAULT_HOST:-127.0.0.1}}"
 CLIENT_HOST="${CLIENT_HOST:-${MASTER_HOST}}"
@@ -49,7 +54,21 @@ export LD_LIBRARY_PATH=/usr/lib64:/usr/local/lib64:/usr/local/lib:${LD_LIBRARY_P
 export LIBRARY_PATH=/usr/lib64:/usr/local/lib64:/usr/local/lib:${LIBRARY_PATH:-}
 export PKG_CONFIG_PATH=/usr/lib64/pkgconfig:/usr/share/pkgconfig:/usr/local/lib64/pkgconfig:/usr/local/lib/pkgconfig:${PKG_CONFIG_PATH:-}
 export CMAKE_PREFIX_PATH=/usr/local:/usr:${CMAKE_PREFIX_PATH:-}
-export GOTOOLCHAIN="${GOTOOLCHAIN:-auto}"
+if [ "$OFFLINE_MODE" = "1" ]; then
+    export GOPROXY=off
+    export GOSUMDB=off
+    export GOTOOLCHAIN=local
+else
+    export GOTOOLCHAIN="${GOTOOLCHAIN:-auto}"
+fi
+CMAKE_OFFLINE_ARGS=()
+if [ "$OFFLINE_MODE" = "1" ]; then
+    CMAKE_OFFLINE_ARGS=(
+        -DFETCHCONTENT_FULLY_DISCONNECTED=ON
+        -DMOONCAKE_UBDIAG_SOURCE_DIR="$OFFLINE_UBDIAG_SOURCE_DIR"
+        -DFETCHCONTENT_SOURCE_DIR_URMA="$OFFLINE_URMA_SOURCE_DIR"
+    )
+fi
 
 preflight_build_environment() {
     if [ "$REQUIRE_DOCKER" = "1" ] && [ ! -f /.dockerenv ]; then
@@ -68,6 +87,29 @@ preflight_build_environment() {
             exit 1
         }
     done
+    if [ "$OFFLINE_MODE" = "1" ]; then
+        [ "$REUSE_BUILD" = "1" ] || {
+            echo "FATAL: 完全离线验证要求 REUSE_BUILD=1，禁止删除现有仓库后联网 clone" >&2
+            exit 1
+        }
+        [ -r "$OFFLINE_UBDIAG_SOURCE_DIR/include/ubdiag/perf_point.h" ] || {
+            echo "FATAL: 离线 UbDiag 源码不存在: $OFFLINE_UBDIAG_SOURCE_DIR" >&2
+            exit 1
+        }
+        [ -r "$OFFLINE_URMA_SOURCE_DIR/CMakeLists.txt" ] || {
+            echo "FATAL: 离线 UMDK 源码不存在: $OFFLINE_URMA_SOURCE_DIR" >&2
+            exit 1
+        }
+        [ "$(go env GOPROXY)" = "off" ] || {
+            echo "FATAL: 离线模式 GOPROXY 必须为 off" >&2
+            exit 1
+        }
+        [ "$(go env GOTOOLCHAIN)" = "local" ] || {
+            echo "FATAL: 离线模式 GOTOOLCHAIN 必须为 local" >&2
+            exit 1
+        }
+        echo "  OK: FetchContent/Go 均固定为完全离线模式"
+    fi
     local cmake_search_roots=()
     local search_root
     for search_root in /usr/local/lib /usr/local/lib64 /usr/lib /usr/lib64; do
@@ -364,6 +406,9 @@ if [ "$REUSE_BUILD" = "1" ]; then
         exit 1
     }
     echo "  REUSE_BUILD=1: 复用现有源码和两层构建产物"
+elif [ "$OFFLINE_MODE" = "1" ]; then
+    echo "FATAL: 离线模式禁止删除源码后联网 clone，请设置 REUSE_BUILD=1" >&2
+    exit 1
 else
     rm -rf "$MOONCAKE_DIR"
     git clone -b supercache_dev_ubdiag \
@@ -413,6 +458,7 @@ if [ "$REUSE_BUILD" = "1" ]; then
          -DWITH_STORE_RUST=OFF \
          -DBUILD_BENCHMARK=ON -DBUILD_UNIT_TESTS=OFF \
          -DBUILD_TESTS=OFF -DBUILD_EXAMPLES=OFF \
+         "${CMAKE_OFFLINE_ARGS[@]}" \
          2>&1 | tee cmake_mock.log; then
         echo "FATAL: DISABLE 模式 CMake 重新配置失败" >&2
         exit 1
@@ -425,6 +471,7 @@ else
          -DWITH_STORE_RUST=OFF \
          -DBUILD_BENCHMARK=ON -DBUILD_UNIT_TESTS=OFF \
          -DBUILD_TESTS=OFF -DBUILD_EXAMPLES=OFF \
+         "${CMAKE_OFFLINE_ARGS[@]}" \
          2>&1 | tee cmake_mock.log; then
         echo "FATAL: DISABLE 模式 CMake 配置失败，停止验证"
         exit 1
@@ -439,20 +486,26 @@ verify_urma_cache
 
 echo ""
 echo "[1/8] 检查 FetchContent 拉取的 ubdiag 版本..."
-if [ -d "_deps/ubdiag-src" ]; then
-    cd _deps/ubdiag-src
-    if ! git show-ref --verify --quiet "refs/tags/$UBDIAG_EXPECTED_TAG"; then
-        git fetch origin \
+MOCK_UBDIAG_SOURCE_CHECK="${OFFLINE_UBDIAG_SOURCE_DIR:-$PWD/_deps/ubdiag-src}"
+if [ -d "$MOCK_UBDIAG_SOURCE_CHECK" ]; then
+    if ! git -C "$MOCK_UBDIAG_SOURCE_CHECK" show-ref --verify --quiet \
+         "refs/tags/$UBDIAG_EXPECTED_TAG"; then
+        if [ "$OFFLINE_MODE" = "1" ]; then
+            echo "FATAL: 离线 UbDiag 源码缺少 tag $UBDIAG_EXPECTED_TAG" >&2
+            exit 2
+        fi
+        git -C "$MOCK_UBDIAG_SOURCE_CHECK" fetch origin \
             "refs/tags/$UBDIAG_EXPECTED_TAG:refs/tags/$UBDIAG_EXPECTED_TAG"
     fi
-    TAG=$(git describe --tags --exact-match 2>/dev/null || echo "unknown")
-    COMMIT_FULL=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
-    COMMIT=$(git log --oneline -1 2>/dev/null || echo "unknown")
+    TAG=$(git -C "$MOCK_UBDIAG_SOURCE_CHECK" describe --tags --exact-match 2>/dev/null || echo "unknown")
+    COMMIT_FULL=$(git -C "$MOCK_UBDIAG_SOURCE_CHECK" rev-parse HEAD 2>/dev/null || echo "unknown")
+    COMMIT=$(git -C "$MOCK_UBDIAG_SOURCE_CHECK" log --oneline -1 2>/dev/null || echo "unknown")
     echo "  tag: $TAG"
     echo "  commit: $COMMIT"
     echo "  commit SHA: $COMMIT_FULL"
-    grep -m1 "project(UbDiag VERSION" CMakeLists.txt 2>/dev/null || true
-    grep "versionString" include/ubdiag/version.h 2>/dev/null || echo "  (version.h 无 versionString)"
+    grep -m1 "project(UbDiag VERSION" "$MOCK_UBDIAG_SOURCE_CHECK/CMakeLists.txt" 2>/dev/null || true
+    grep "versionString" "$MOCK_UBDIAG_SOURCE_CHECK/include/ubdiag/version.h" 2>/dev/null || \
+        echo "  (version.h 无 versionString)"
 
     if [ "$COMMIT_FULL" != "$UBDIAG_EXPECTED_COMMIT" ]; then
         echo "FATAL: 期望 ubdiag $UBDIAG_EXPECTED_COMMIT,实际 $COMMIT_FULL"
@@ -464,15 +517,14 @@ if [ -d "_deps/ubdiag-src" ]; then
     fi
     echo "  OK: ubdiag commit 与 LinQuickDev/ubdiag master 镜像基线一致"
 
-    if ! grep -q "UBDIAG_DISABLE" include/ubdiag/perf_point.h; then
+    if ! grep -q "UBDIAG_DISABLE" "$MOCK_UBDIAG_SOURCE_CHECK/include/ubdiag/perf_point.h"; then
         echo "FATAL: $TAG 的 perf_point.h 不包含 UBDIAG_DISABLE，无法验证 v1.2 DISABLE 层"
         echo "       当前文档依赖的空函数机制不在所选 tag 中，请先修正 UbDiag 版本基线"
         exit 2
     fi
     echo "  OK: $TAG 包含 UBDIAG_DISABLE 空函数机制"
-    cd ../..
 else
-    echo "FATAL: DISABLE 模式没有找到 _deps/ubdiag-src" >&2
+    echo "FATAL: DISABLE 模式没有找到 UbDiag 源码: $MOCK_UBDIAG_SOURCE_CHECK" >&2
     exit 2
 fi
 
@@ -579,6 +631,7 @@ if [ "$REUSE_BUILD" = "1" ]; then
          -DWITH_STORE_RUST=OFF \
          -DBUILD_BENCHMARK=ON -DBUILD_UNIT_TESTS=OFF \
          -DBUILD_TESTS=OFF -DBUILD_EXAMPLES=OFF \
+         "${CMAKE_OFFLINE_ARGS[@]}" \
          2>&1 | tee cmake_vendored.log; then
         echo "FATAL: vendored 模式 CMake 重新配置失败" >&2
         exit 1
@@ -592,6 +645,7 @@ else
          -DWITH_STORE_RUST=OFF \
          -DBUILD_BENCHMARK=ON -DBUILD_UNIT_TESTS=OFF \
          -DBUILD_TESTS=OFF -DBUILD_EXAMPLES=OFF \
+         "${CMAKE_OFFLINE_ARGS[@]}" \
          2>&1 | tee cmake_vendored.log; then
         echo "FATAL: vendored 模式 CMake 配置失败，停止验证"
         exit 1
@@ -606,22 +660,28 @@ verify_urma_cache
 
 echo ""
 echo "[4/8] 检查 FetchContent 拉取的 ubdiag 版本..."
-if [ -d "_deps/ubdiag-src" ]; then
-    cd _deps/ubdiag-src
-    if ! git show-ref --verify --quiet "refs/tags/$UBDIAG_EXPECTED_TAG"; then
-        git fetch origin \
+VENDORED_UBDIAG_SOURCE_CHECK="${OFFLINE_UBDIAG_SOURCE_DIR:-$PWD/_deps/ubdiag-src}"
+if [ -d "$VENDORED_UBDIAG_SOURCE_CHECK" ]; then
+    if ! git -C "$VENDORED_UBDIAG_SOURCE_CHECK" show-ref --verify --quiet \
+         "refs/tags/$UBDIAG_EXPECTED_TAG"; then
+        if [ "$OFFLINE_MODE" = "1" ]; then
+            echo "FATAL: 离线 UbDiag 源码缺少 tag $UBDIAG_EXPECTED_TAG" >&2
+            exit 2
+        fi
+        git -C "$VENDORED_UBDIAG_SOURCE_CHECK" fetch origin \
             "refs/tags/$UBDIAG_EXPECTED_TAG:refs/tags/$UBDIAG_EXPECTED_TAG"
     fi
-    TAG=$(git describe --tags --exact-match 2>/dev/null || echo "unknown")
-    COMMIT_FULL=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
-    COMMIT=$(git log --oneline -1 2>/dev/null || echo "unknown")
+    TAG=$(git -C "$VENDORED_UBDIAG_SOURCE_CHECK" describe --tags --exact-match 2>/dev/null || echo "unknown")
+    COMMIT_FULL=$(git -C "$VENDORED_UBDIAG_SOURCE_CHECK" rev-parse HEAD 2>/dev/null || echo "unknown")
+    COMMIT=$(git -C "$VENDORED_UBDIAG_SOURCE_CHECK" log --oneline -1 2>/dev/null || echo "unknown")
     echo "  tag: $TAG"
     echo "  commit: $COMMIT"
     echo "  commit SHA: $COMMIT_FULL"
-    grep -m1 "project(UbDiag VERSION" CMakeLists.txt 2>/dev/null || true
+    grep -m1 "project(UbDiag VERSION" "$VENDORED_UBDIAG_SOURCE_CHECK/CMakeLists.txt" 2>/dev/null || true
     echo "  version.h:"
-    grep "versionString\|versionMajor\|versionMinor\|versionPatch" include/ubdiag/version.h 2>/dev/null || echo "  (无 versionString)"
-    cd ../..
+    grep "versionString\|versionMajor\|versionMinor\|versionPatch" \
+        "$VENDORED_UBDIAG_SOURCE_CHECK/include/ubdiag/version.h" 2>/dev/null || \
+        echo "  (无 versionString)"
 
     if [ "$COMMIT_FULL" = "$UBDIAG_EXPECTED_COMMIT" ]; then
         echo "  OK: commit 匹配 $UBDIAG_EXPECTED_COMMIT"
@@ -634,7 +694,7 @@ if [ -d "_deps/ubdiag-src" ]; then
         exit 2
     fi
 else
-    echo "FATAL: vendored 模式没有找到 _deps/ubdiag-src" >&2
+    echo "FATAL: vendored 模式没有找到 UbDiag 源码: $VENDORED_UBDIAG_SOURCE_CHECK" >&2
     exit 2
 fi
 
@@ -732,11 +792,11 @@ echo "============================================================"
 echo "  期望 ubdiag tag: $UBDIAG_EXPECTED_TAG"
 echo "  期望 ubdiag commit: $UBDIAG_EXPECTED_COMMIT"
 echo "  DISABLE 模式拉取:"
-(cd build_mock/_deps/ubdiag-src 2>/dev/null && git rev-parse HEAD 2>/dev/null) || echo "    (源码目录不存在)"
+(git -C "$MOCK_UBDIAG_SOURCE_CHECK" rev-parse HEAD 2>/dev/null) || echo "    (源码目录不存在)"
 echo "  vendored 模式拉取:"
-(cd build_vendored/_deps/ubdiag-src 2>/dev/null && git rev-parse HEAD 2>/dev/null) || echo "    (源码目录不存在)"
-MOCK_FETCHED_COMMIT="$(git -C build_mock/_deps/ubdiag-src rev-parse HEAD 2>/dev/null || true)"
-VENDORED_FETCHED_COMMIT="$(git -C build_vendored/_deps/ubdiag-src rev-parse HEAD 2>/dev/null || true)"
+(git -C "$VENDORED_UBDIAG_SOURCE_CHECK" rev-parse HEAD 2>/dev/null) || echo "    (源码目录不存在)"
+MOCK_FETCHED_COMMIT="$(git -C "$MOCK_UBDIAG_SOURCE_CHECK" rev-parse HEAD 2>/dev/null || true)"
+VENDORED_FETCHED_COMMIT="$(git -C "$VENDORED_UBDIAG_SOURCE_CHECK" rev-parse HEAD 2>/dev/null || true)"
 if [ "$MOCK_FETCHED_COMMIT" != "$UBDIAG_EXPECTED_COMMIT" ] || \
    [ "$VENDORED_FETCHED_COMMIT" != "$UBDIAG_EXPECTED_COMMIT" ]; then
     echo "FATAL: 两层 UbDiag commit 未同时命中期望基线" >&2
@@ -853,9 +913,9 @@ echo "  CSV 文件数: $CSV_COUNT"
 echo ""
 echo "版本校验:"
 echo "  期望 tag: $UBDIAG_EXPECTED_TAG"
-echo "  实际 tag: $(cd build_vendored/_deps/ubdiag-src 2>/dev/null && git describe --tags --exact-match 2>/dev/null || echo "unknown")"
+echo "  实际 tag: $(git -C "$VENDORED_UBDIAG_SOURCE_CHECK" describe --tags --exact-match 2>/dev/null || echo "unknown")"
 echo "  期望 commit: $UBDIAG_EXPECTED_COMMIT"
-echo "  实际 commit: $(cd build_vendored/_deps/ubdiag-src 2>/dev/null && git rev-parse HEAD 2>/dev/null || echo "unknown")"
+echo "  实际 commit: $(git -C "$VENDORED_UBDIAG_SOURCE_CHECK" rev-parse HEAD 2>/dev/null || echo "unknown")"
 echo ""
 echo "日志:"
 echo "  DISABLE cmake:  $MOONCAKE_DIR/build_mock/cmake_mock.log"
