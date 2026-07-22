@@ -18,6 +18,8 @@ UMDK_REPOSITORIES=(
     "https://atomgit.com/openeuler/umdk.git"
 )
 RPM_MIRROR_BASE="${RPM_MIRROR_BASE:-https://repo.huaweicloud.com/openeuler}"
+# Pipes make Go fall back after TLS/timeouts as well as 404/410 responses.
+GO_PROXY_CHAIN="${MOONCAKE_GOPROXY:-https://repo.huaweicloud.com/repository/goproxy/|https://goproxy.cn|https://goproxy.io|https://proxy.golang.org|direct}"
 DOWNLOAD_ROUTE=""
 DOWNLOAD_PROXY=""
 DNF_PROXY_ARGS=()
@@ -184,6 +186,21 @@ download_go() {
     return 1
 }
 
+find_ca_bundle() {
+    local candidate
+    for candidate in \
+        "${SSL_CERT_FILE:-}" \
+        /etc/pki/tls/certs/ca-bundle.crt \
+        /etc/ssl/certs/ca-certificates.crt \
+        /etc/ssl/ca-bundle.pem; do
+        if [ -n "$candidate" ] && [ -s "$candidate" ]; then
+            printf '%s\n' "$candidate"
+            return 0
+        fi
+    done
+    return 1
+}
+
 [ "$(id -u)" -eq 0 ] || fatal "请在宿主机以 root 执行"
 [ ! -f /.dockerenv ] || fatal "离线依赖仓必须在可联网宿主机制作"
 [ -d "$REPO_DIR/.git" ] || fatal "Mooncake 仓库不存在: $REPO_DIR"
@@ -331,14 +348,19 @@ download_go "$BUNDLE_DIR/$GO_TARBALL" \
 rm -rf "$BUNDLE_DIR/go-toolchain"
 mkdir -p "$BUNDLE_DIR/go-toolchain"
 tar -C "$BUNDLE_DIR/go-toolchain" -xzf "$BUNDLE_DIR/$GO_TARBALL"
+GO_CA_BUNDLE="$(find_ca_bundle)" || \
+    fatal "宿主机缺少可用 CA bundle，无法安全下载 Go 模块"
+echo "Downloading Go modules with failover proxy chain..."
 network_exec env \
+    SSL_CERT_FILE="$GO_CA_BUNDLE" \
     GOMODCACHE="$BUNDLE_DIR/go-cache/pkg/mod" \
     GOCACHE="$BUNDLE_DIR/go-build" \
     GOTOOLCHAIN=local \
-    GOPROXY="${GOPROXY:-https://goproxy.cn,https://goproxy.io,direct}" \
+    GOPROXY="$GO_PROXY_CHAIN" \
     "$BUNDLE_DIR/go-toolchain/go/bin/go" \
     -C "$REPO_DIR/mooncake-common/etcd" mod download all
 network_exec env \
+    SSL_CERT_FILE="$GO_CA_BUNDLE" \
     GOMODCACHE="$BUNDLE_DIR/go-cache/pkg/mod" \
     GOCACHE="$BUNDLE_DIR/go-build" \
     GOTOOLCHAIN=local \
