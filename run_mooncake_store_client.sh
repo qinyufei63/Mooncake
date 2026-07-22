@@ -15,7 +15,13 @@ CLIENT_HOST="${CLIENT_HOST:-${MASTER_HOST}}"
 CLIENT_PORT="${CLIENT_PORT:-8980}"
 CLIENT_THREADS="${CLIENT_THREADS:-16}"
 CLIENT_PROTOCOL="${CLIENT_PROTOCOL:-${PROTOCOL:-ub}}"
-CLIENT_DEVICE_NAMES="${CLIENT_DEVICE_NAMES:-${DEVICE_NAME:-bonding_dev_0}}"
+if [ -z "${CLIENT_DEVICE_NAMES+x}" ]; then
+    if [ "$CLIENT_PROTOCOL" = "ub" ]; then
+        CLIENT_DEVICE_NAMES="${DEVICE_NAME:-bonding_dev_0}"
+    else
+        CLIENT_DEVICE_NAMES=""
+    fi
+fi
 CLIENT_GLOBAL_SEGMENT_SIZE="${CLIENT_GLOBAL_SEGMENT_SIZE:-21474836480}"
 
 export LD_LIBRARY_PATH="${BUILD_DIR}/_deps/ubdiag-build/src/sdk:${BUILD_DIR}/mooncake-store/src:${BUILD_DIR}/mooncake-transfer-engine/src:${BUILD_DIR}/mooncake-common:${BUILD_DIR}/mooncake-common/etcd:/usr/lib64:/usr/local/lib64:/usr/local/lib:${LD_LIBRARY_PATH:-}"

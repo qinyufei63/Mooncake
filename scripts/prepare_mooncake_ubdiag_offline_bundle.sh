@@ -8,6 +8,7 @@ CONTAINER_NAME="${CONTAINER_NAME:-mooncake-ubdiag-v12-node2}"
 BUNDLE_DIR="${BUNDLE_DIR:-$(dirname "$REPO_DIR")/mooncake-ubdiag-offline-bundle}"
 PACKAGE_FILE="$REPO_DIR/scripts/mooncake_ubdiag_container_packages.txt"
 GO_VERSION="${GO_VERSION:-1.25.10}"
+USE_UB="${USE_UB:-OFF}"
 UBDIAG_EXPECTED_TAG="v0.5.1"
 UBDIAG_EXPECTED_COMMIT="705c6c37da45df2be4bc64c134dca0b7f30b2113"
 UBDIAG_REPOSITORY="https://github.com/LinQuickDev/ubdiag.git"
@@ -29,6 +30,11 @@ fatal() {
     echo "FATAL: $*" >&2
     exit 1
 }
+
+case "$USE_UB" in
+    ON|OFF) ;;
+    *) fatal "USE_UB 只能是 ON 或 OFF: $USE_UB" ;;
+esac
 
 first_git_source() {
     local candidate
@@ -264,30 +270,36 @@ if [ -z "$UBDIAG_SOURCE" ]; then
     fi
 fi
 UMDK_SOURCE="${OFFLINE_UMDK_SOURCE_DIR:-}"
-if [ -z "$UMDK_SOURCE" ]; then
-    if ! UMDK_SOURCE="$(first_git_source \
-        "$REPO_DIR/build_vendored/_deps/urma-src" \
-        "$REPO_DIR/build_mock/_deps/urma-src")"; then
-        UMDK_SOURCE="$BUNDLE_DIR/source-downloads/urma"
-        clone_fixed_source "UMDK" "$UMDK_EXPECTED_TAG" \
-            "$UMDK_EXPECTED_COMMIT" "$UMDK_SOURCE" \
-            "${UMDK_REPOSITORIES[@]}"
+UMDK_COMMIT=""
+UMDK_TAG=""
+if [ "$USE_UB" = "ON" ]; then
+    if [ -z "$UMDK_SOURCE" ]; then
+        if ! UMDK_SOURCE="$(first_git_source \
+            "$REPO_DIR/build_vendored/_deps/urma-src" \
+            "$REPO_DIR/build_mock/_deps/urma-src")"; then
+            UMDK_SOURCE="$BUNDLE_DIR/source-downloads/urma"
+            clone_fixed_source "UMDK" "$UMDK_EXPECTED_TAG" \
+                "$UMDK_EXPECTED_COMMIT" "$UMDK_SOURCE" \
+                "${UMDK_REPOSITORIES[@]}"
+        fi
     fi
+    assert_clean_source "UMDK" "$UMDK_SOURCE"
+    UMDK_COMMIT="$(git -C "$UMDK_SOURCE" rev-parse HEAD)"
+    [ "$UMDK_COMMIT" = "$UMDK_EXPECTED_COMMIT" ] || \
+        fatal "UMDK commit 不匹配: expected=$UMDK_EXPECTED_COMMIT actual=$UMDK_COMMIT"
+    verify_tag_if_present "UMDK" "$UMDK_SOURCE" \
+        "$UMDK_EXPECTED_TAG" "$UMDK_EXPECTED_COMMIT"
+    UMDK_TAG="$UMDK_EXPECTED_TAG"
+else
+    echo "USE_UB=OFF: skipping UMDK source and URMA runtime payloads"
 fi
 
 assert_clean_source "UbDiag" "$UBDIAG_SOURCE"
-assert_clean_source "UMDK" "$UMDK_SOURCE"
 UBDIAG_COMMIT="$(git -C "$UBDIAG_SOURCE" rev-parse HEAD)"
 [ "$UBDIAG_COMMIT" = "$UBDIAG_EXPECTED_COMMIT" ] || \
     fatal "UbDiag commit 不匹配: expected=$UBDIAG_EXPECTED_COMMIT actual=$UBDIAG_COMMIT"
 verify_tag_if_present "UbDiag" "$UBDIAG_SOURCE" \
     "$UBDIAG_EXPECTED_TAG" "$UBDIAG_EXPECTED_COMMIT"
-UMDK_COMMIT="$(git -C "$UMDK_SOURCE" rev-parse HEAD)"
-[ "$UMDK_COMMIT" = "$UMDK_EXPECTED_COMMIT" ] || \
-    fatal "UMDK commit 不匹配: expected=$UMDK_EXPECTED_COMMIT actual=$UMDK_COMMIT"
-verify_tag_if_present "UMDK" "$UMDK_SOURCE" \
-    "$UMDK_EXPECTED_TAG" "$UMDK_EXPECTED_COMMIT"
-
 git -C "$REPO_DIR" submodule status --recursive >"$BUNDLE_DIR/submodules.txt"
 if grep -Eq '^[-+U]' "$BUNDLE_DIR/submodules.txt"; then
     cat "$BUNDLE_DIR/submodules.txt" >&2
@@ -303,7 +315,9 @@ if ! dnf install --help 2>/dev/null | grep -q -- '--downloadonly'; then
         install -y dnf-plugins-core
 fi
 mapfile -t packages < <(
-    sed -e 's/[[:space:]]*#.*$//' -e '/^[[:space:]]*$/d' "$PACKAGE_FILE"
+    sed -e 's/[[:space:]]*#.*$//' -e '/^[[:space:]]*$/d' "$PACKAGE_FILE" |
+        awk -v use_ub="$USE_UB" \
+            'use_ub == "ON" || $0 !~ /^umdk-urma-/ { print }'
 )
 [ "${#packages[@]}" -gt 0 ] || fatal "RPM manifest 为空"
 
@@ -384,11 +398,14 @@ tar --owner=0 --group=0 --numeric-owner \
 
 tar --owner=0 --group=0 --numeric-owner \
     -C "$UBDIAG_SOURCE" -czf "$BUNDLE_DIR/ubdiag-source.tar.gz" .
-tar --owner=0 --group=0 --numeric-owner \
-    -C "$UMDK_SOURCE" -czf "$BUNDLE_DIR/umdk-source.tar.gz" .
+if [ "$USE_UB" = "ON" ]; then
+    tar --owner=0 --group=0 --numeric-owner \
+        -C "$UMDK_SOURCE" -czf "$BUNDLE_DIR/umdk-source.tar.gz" .
+fi
 
 cat >"$BUNDLE_DIR/manifest.env" <<EOF
-MOONCAKE_OFFLINE_BUNDLE_VERSION=2
+MOONCAKE_OFFLINE_BUNDLE_VERSION=3
+USE_UB=$USE_UB
 CONTAINER_RELEASEVER=$CONTAINER_RELEASEVER
 CONTAINER_OS_RELEASE_SHA256=$CONTAINER_OS_RELEASE_SHA256
 CONTAINER_ARCH=$CONTAINER_ARCH
@@ -396,15 +413,20 @@ GO_VERSION=$GO_VERSION
 GO_TARBALL=$GO_TARBALL
 UBDIAG_TAG=$UBDIAG_EXPECTED_TAG
 UBDIAG_COMMIT=$UBDIAG_COMMIT
-UMDK_TAG=$UMDK_EXPECTED_TAG
+UMDK_TAG=$UMDK_TAG
 UMDK_COMMIT=$UMDK_COMMIT
 RPM_COUNT=${#rpm_files[@]}
 EOF
 
 (
     cd "$BUNDLE_DIR"
-    sha256sum "$GO_TARBALL" go-module-cache.tar.gz \
-        ubdiag-source.tar.gz umdk-source.tar.gz rpms/*.rpm >SHA256SUMS
+    checksum_inputs=(
+        "$GO_TARBALL" go-module-cache.tar.gz ubdiag-source.tar.gz rpms/*.rpm
+    )
+    if [ "$USE_UB" = "ON" ]; then
+        checksum_inputs+=(umdk-source.tar.gz)
+    fi
+    sha256sum "${checksum_inputs[@]}" >SHA256SUMS
 )
 
 rm -rf "$BUNDLE_DIR/go-toolchain" "$BUNDLE_DIR/go-cache" \

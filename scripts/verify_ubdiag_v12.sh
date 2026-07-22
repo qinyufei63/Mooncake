@@ -23,7 +23,7 @@ VENDORED_UBDIAG_SOURCE_CHECK=""
 DEFAULT_HOST="$(hostname -I 2>/dev/null | awk '{print $1}')"
 MASTER_HOST="${MASTER_HOST:-${DEFAULT_HOST:-127.0.0.1}}"
 CLIENT_HOST="${CLIENT_HOST:-${MASTER_HOST}}"
-PROTOCOL="${PROTOCOL:-ub}"
+PROTOCOL="${PROTOCOL:-tcp}"
 USE_UB="${USE_UB:-}"
 if [ -z "$USE_UB" ]; then
     if [ "$PROTOCOL" = "ub" ]; then
@@ -36,7 +36,11 @@ if [ "$PROTOCOL" = "ub" ] && [ "$USE_UB" != "ON" ]; then
     echo "FATAL: PROTOCOL=ub 要求 USE_UB=ON" >&2
     exit 1
 fi
-DEVICE_NAME="${DEVICE_NAME:-bonding_dev_0}"
+if [ "$USE_UB" = "ON" ]; then
+    DEVICE_NAME="${DEVICE_NAME:-bonding_dev_0}"
+else
+    DEVICE_NAME="${DEVICE_NAME:-}"
+fi
 URMA_LIBRARY="${URMA_LIBRARY:-/usr/lib64/liburma.so}"
 URMA_LIBRARY_REAL=""
 URMA_LIB_DIR=""
@@ -47,6 +51,7 @@ VERIFY_RESULTS_DIR="${VERIFY_RESULTS_DIR:-$WORKSPACE/verify_ubdiag_v12_$(date +%
 MASTER_PID=""
 CLIENT_PID=""
 UBDIAG_ACTIVE_CORE=""
+MOCK_UBDIAG_SYMBOLS=""
 
 export PATH=/usr/local/bin:$PATH
 export PATH=/usr/local/go/bin:$PATH
@@ -66,8 +71,16 @@ if [ "$OFFLINE_MODE" = "1" ]; then
     CMAKE_OFFLINE_ARGS=(
         -DFETCHCONTENT_FULLY_DISCONNECTED=ON
         -DMOONCAKE_UBDIAG_SOURCE_DIR="$OFFLINE_UBDIAG_SOURCE_DIR"
-        -DFETCHCONTENT_SOURCE_DIR_URMA="$OFFLINE_URMA_SOURCE_DIR"
     )
+    if [ "$USE_UB" = "ON" ]; then
+        CMAKE_OFFLINE_ARGS+=(
+            -DFETCHCONTENT_SOURCE_DIR_URMA="$OFFLINE_URMA_SOURCE_DIR"
+        )
+    fi
+fi
+URMA_CMAKE_ARGS=()
+if [ "$USE_UB" = "ON" ]; then
+    URMA_CMAKE_ARGS=(-DURMA_LIBRARY="$URMA_LIBRARY")
 fi
 
 preflight_build_environment() {
@@ -79,8 +92,11 @@ preflight_build_environment() {
     local command_name
     local required_commands=(
         git cmake gcc g++ make go python3 python3-config pkg-config
-        rpmbuild file ldd readelf timeout sha256sum curl urma_admin
+        rpmbuild file ldd readelf nm timeout sha256sum curl
     )
+    if [ "$USE_UB" = "ON" ]; then
+        required_commands+=(urma_admin)
+    fi
     for command_name in "${required_commands[@]}"; do
         command -v "$command_name" >/dev/null 2>&1 || {
             echo "FATAL: 容器缺少命令 $command_name，请先运行 scripts/bootstrap_mooncake_ubdiag_container.sh" >&2
@@ -96,10 +112,12 @@ preflight_build_environment() {
             echo "FATAL: 离线 UbDiag 源码不存在: $OFFLINE_UBDIAG_SOURCE_DIR" >&2
             exit 1
         }
-        [ -r "$OFFLINE_URMA_SOURCE_DIR/CMakeLists.txt" ] || {
-            echo "FATAL: 离线 UMDK 源码不存在: $OFFLINE_URMA_SOURCE_DIR" >&2
-            exit 1
-        }
+        if [ "$USE_UB" = "ON" ]; then
+            [ -r "$OFFLINE_URMA_SOURCE_DIR/CMakeLists.txt" ] || {
+                echo "FATAL: 离线 UMDK 源码不存在: $OFFLINE_URMA_SOURCE_DIR" >&2
+                exit 1
+            }
+        fi
         [ "$(go env GOPROXY)" = "off" ] || {
             echo "FATAL: 离线模式 GOPROXY 必须为 off" >&2
             exit 1
@@ -453,8 +471,9 @@ if [ "$REUSE_BUILD" = "1" ]; then
     cd build_mock
     echo "  REUSE_BUILD=1: 复用构建目录，仅重新执行 DISABLE 模式 CMake 配置"
     if ! cmake .. -DWITH_STORE=ON -DWITH_TE=ON -DWITH_P2P_STORE=OFF \
+         -DCMAKE_BUILD_TYPE=Release \
          -DSTORE_USE_ETCD=ON -DUSE_ETCD=ON -DUSE_UB="$USE_UB" \
-         -DURMA_LIBRARY="$URMA_LIBRARY" \
+         "${URMA_CMAKE_ARGS[@]}" \
          -DWITH_STORE_RUST=OFF \
          -DBUILD_BENCHMARK=ON -DBUILD_UNIT_TESTS=OFF \
          -DBUILD_TESTS=OFF -DBUILD_EXAMPLES=OFF \
@@ -466,8 +485,9 @@ if [ "$REUSE_BUILD" = "1" ]; then
 else
     mkdir build_mock && cd build_mock
     if ! cmake .. -DWITH_STORE=ON -DWITH_TE=ON -DWITH_P2P_STORE=OFF \
+         -DCMAKE_BUILD_TYPE=Release \
          -DSTORE_USE_ETCD=ON -DUSE_ETCD=ON -DUSE_UB="$USE_UB" \
-         -DURMA_LIBRARY="$URMA_LIBRARY" \
+         "${URMA_CMAKE_ARGS[@]}" \
          -DWITH_STORE_RUST=OFF \
          -DBUILD_BENCHMARK=ON -DBUILD_UNIT_TESTS=OFF \
          -DBUILD_TESTS=OFF -DBUILD_EXAMPLES=OFF \
@@ -478,8 +498,8 @@ else
     fi
 fi
 grep -iE "UbDiag|ubdiag|fetch|disable|error|fatal" cmake_mock.log 2>/dev/null || true
-if [ "$USE_UB" = "ON" ] && ! grep -q '^USE_UB:BOOL=ON$' CMakeCache.txt; then
-    echo "FATAL: DISABLE 构建没有启用 USE_UB" >&2
+if ! grep -q "^USE_UB:BOOL=$USE_UB$" CMakeCache.txt; then
+    echo "FATAL: DISABLE 构建 USE_UB 与预期不一致: expected=$USE_UB" >&2
     exit 1
 fi
 verify_urma_cache
@@ -592,15 +612,45 @@ fi
 # 确认 UBDIAG_DISABLE 生效:检查 mooncake_master 二进制是否引用 libubdiag
 echo ""
 echo "[3/8] 检查二进制是否链接 libubdiag (DISABLE 模式不应该链接)..."
-if [ -n "$MOCK_BIN" ]; then
-    if ldd $MOCK_BIN 2>/dev/null | grep -q "libubdiag"; then
-        echo "FATAL: DISABLE 模式下链接了 libubdiag" >&2
-        ldd $MOCK_BIN | grep libubdiag
+MOCK_BINARIES=(
+    mooncake-store/src/mooncake_master
+    mooncake-store/src/mooncake_client
+    mooncake-store/benchmarks/stress_cluster_bench
+)
+for mock_binary in "${MOCK_BINARIES[@]}"; do
+    [ -x "$mock_binary" ] || {
+        echo "FATAL: DISABLE 可执行文件不存在: $mock_binary" >&2
         exit 1
-    else
-        echo "  OK: DISABLE 模式下未链接 libubdiag (constexpr 空函数,零依赖)"
+    }
+    if ldd "$mock_binary" 2>/dev/null | grep -q "libubdiag"; then
+        echo "FATAL: DISABLE 二进制链接了 libubdiag: $mock_binary" >&2
+        ldd "$mock_binary" | grep libubdiag >&2
+        exit 1
     fi
-fi
+    if readelf -d "$mock_binary" 2>/dev/null |
+       grep -qE 'NEEDED.*libubdiag'; then
+        echo "FATAL: DISABLE 二进制动态依赖表包含 libubdiag: $mock_binary" >&2
+        exit 1
+    fi
+    mock_nm_log="$VERIFY_RESULTS_DIR/mock_$(basename "$mock_binary").nm"
+    if ! nm -C "$mock_binary" >"$mock_nm_log" 2>&1; then
+        cat "$mock_nm_log" >&2
+        echo "FATAL: 无法读取 DISABLE 二进制符号表: $mock_binary" >&2
+        exit 1
+    fi
+    [ -s "$mock_nm_log" ] || {
+        echo "FATAL: DISABLE 二进制符号表为空，无法证明 mock 生效: $mock_binary" >&2
+        exit 1
+    }
+    mock_symbols="$(grep -F 'UbDiag::' "$mock_nm_log" || true)"
+    if [ -n "$mock_symbols" ]; then
+        MOCK_UBDIAG_SYMBOLS+="${MOCK_UBDIAG_SYMBOLS:+$'\n'}$mock_binary"$'\n'"$mock_symbols"
+        echo "FATAL: DISABLE 二进制仍包含 UbDiag 实现或外部引用: $mock_binary" >&2
+        echo "$mock_symbols" | head -20 >&2
+        exit 1
+    fi
+done
+echo "  OK: 3 个 DISABLE 可执行文件均未链接 libubdiag，且不存在 UbDiag:: 符号"
 
 echo ""
 echo "[3/8] Layer 0 运行 master/client/write/read benchmark..."
@@ -626,8 +676,9 @@ if [ "$REUSE_BUILD" = "1" ]; then
     echo "  REUSE_BUILD=1: 复用构建目录，仅重新执行 vendored 模式 CMake 配置"
     if ! cmake .. -DMOONCAKE_ENABLE_UBDIAG=ON \
          -DWITH_STORE=ON -DWITH_TE=ON -DWITH_P2P_STORE=OFF \
+         -DCMAKE_BUILD_TYPE=Release \
          -DSTORE_USE_ETCD=ON -DUSE_ETCD=ON -DUSE_UB="$USE_UB" \
-         -DURMA_LIBRARY="$URMA_LIBRARY" \
+         "${URMA_CMAKE_ARGS[@]}" \
          -DWITH_STORE_RUST=OFF \
          -DBUILD_BENCHMARK=ON -DBUILD_UNIT_TESTS=OFF \
          -DBUILD_TESTS=OFF -DBUILD_EXAMPLES=OFF \
@@ -640,8 +691,9 @@ else
     mkdir build_vendored && cd build_vendored
     if ! cmake .. -DMOONCAKE_ENABLE_UBDIAG=ON \
          -DWITH_STORE=ON -DWITH_TE=ON -DWITH_P2P_STORE=OFF \
+         -DCMAKE_BUILD_TYPE=Release \
          -DSTORE_USE_ETCD=ON -DUSE_ETCD=ON -DUSE_UB="$USE_UB" \
-         -DURMA_LIBRARY="$URMA_LIBRARY" \
+         "${URMA_CMAKE_ARGS[@]}" \
          -DWITH_STORE_RUST=OFF \
          -DBUILD_BENCHMARK=ON -DBUILD_UNIT_TESTS=OFF \
          -DBUILD_TESTS=OFF -DBUILD_EXAMPLES=OFF \
@@ -652,8 +704,8 @@ else
     fi
 fi
 grep -iE "UbDiag|ubdiag|fetch|vendored|error|fatal" cmake_vendored.log 2>/dev/null || true
-if [ "$USE_UB" = "ON" ] && ! grep -q '^USE_UB:BOOL=ON$' CMakeCache.txt; then
-    echo "FATAL: vendored 构建没有启用 USE_UB" >&2
+if ! grep -q "^USE_UB:BOOL=$USE_UB$" CMakeCache.txt; then
+    echo "FATAL: vendored 构建 USE_UB 与预期不一致: expected=$USE_UB" >&2
     exit 1
 fi
 verify_urma_cache
@@ -896,6 +948,7 @@ echo "  cmake 配置: $MOCK_CMAKE_COUNT 条 ubdiag 日志"
 echo "  mooncake 编译: $([ -n "$MOCK_BIN" ] && [ -f "build_mock/$MOCK_BIN" ] && echo "成功" || echo "失败/跳过")"
 MOCK_LINK_COUNT="$(ldd "build_mock/$MOCK_BIN" 2>/dev/null | grep -c libubdiag || true)"
 echo "  libubdiag 链接: $MOCK_LINK_COUNT (应该为 0)"
+echo "  UbDiag 实现/引用符号: $([ -z "$MOCK_UBDIAG_SYMBOLS" ] && echo 0 || echo '非零') (应该为 0)"
 echo "  SHM 创建: $(ls /dev/shm/ubdiag_shm_* 2>/dev/null | wc -l) (应该为 0)"
 echo ""
 echo "Layer 1 vendored 模式:"
