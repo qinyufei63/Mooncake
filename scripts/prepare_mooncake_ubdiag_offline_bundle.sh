@@ -13,7 +13,10 @@ UBDIAG_EXPECTED_COMMIT="705c6c37da45df2be4bc64c134dca0b7f30b2113"
 UBDIAG_REPOSITORY="https://github.com/LinQuickDev/ubdiag.git"
 UMDK_EXPECTED_TAG="v25.12.0.B081"
 UMDK_EXPECTED_COMMIT="a4768b149b6040c11a1c42971addb768a4222b74"
-UMDK_REPOSITORY="https://github.com/openeuler-mirror/umdk.git"
+UMDK_REPOSITORIES=(
+    "https://github.com/openeuler-mirror/umdk.git"
+    "https://atomgit.com/openeuler/umdk.git"
+)
 RPM_MIRROR_BASE="${RPM_MIRROR_BASE:-https://repo.huaweicloud.com/openeuler}"
 
 fatal() {
@@ -39,19 +42,30 @@ without_proxy() {
 
 clone_fixed_source() {
     local name="$1"
-    local repository="$2"
-    local ref="$3"
+    local ref="$2"
+    local expected_commit="$3"
     local destination="$4"
-    echo "$name 本地源码不存在，宿主机从 $repository 拉取 $ref"
+    shift 4
+    local repository actual_commit
+    for repository in "$@"; do
+        echo "$name 本地源码不存在，尝试从 $repository 拉取 $ref"
+        rm -rf "$destination"
+        mkdir -p "$(dirname "$destination")"
+        if env GIT_TERMINAL_PROMPT=0 git \
+             -c advice.detachedHead=false clone \
+             --branch "$ref" --depth 1 \
+             --recurse-submodules --shallow-submodules \
+             "$repository" "$destination"; then
+            actual_commit="$(git -C "$destination" rev-parse HEAD)"
+            if [ "$actual_commit" = "$expected_commit" ]; then
+                echo "$name 源码命中固定提交: $actual_commit"
+                return 0
+            fi
+            echo "$name 镜像提交不匹配，拒绝使用: expected=$expected_commit actual=$actual_commit" >&2
+        fi
+    done
     rm -rf "$destination"
-    mkdir -p "$(dirname "$destination")"
-    without_proxy env GIT_TERMINAL_PROMPT=0 git \
-        -c http.proxy= -c https.proxy= \
-        -c advice.detachedHead=false clone \
-        --branch "$ref" --depth 1 \
-        --recurse-submodules --shallow-submodules \
-        "$repository" "$destination" || \
-        fatal "$name 固定版本拉取失败: $repository $ref"
+    fatal "$name 所有镜像均无法提供固定版本 $ref ($expected_commit)"
 }
 
 verify_tag_if_present() {
@@ -148,8 +162,9 @@ if [ -z "$UBDIAG_SOURCE" ]; then
         "$REPO_DIR/build_vendored/_deps/ubdiag-src" \
         "$REPO_DIR/build_mock/_deps/ubdiag-src")"; then
         UBDIAG_SOURCE="$BUNDLE_DIR/source-downloads/ubdiag"
-        clone_fixed_source "UbDiag" "$UBDIAG_REPOSITORY" \
-            "$UBDIAG_EXPECTED_TAG" "$UBDIAG_SOURCE"
+        clone_fixed_source "UbDiag" "$UBDIAG_EXPECTED_TAG" \
+            "$UBDIAG_EXPECTED_COMMIT" "$UBDIAG_SOURCE" \
+            "$UBDIAG_REPOSITORY"
     fi
 fi
 UMDK_SOURCE="${OFFLINE_UMDK_SOURCE_DIR:-}"
@@ -158,8 +173,9 @@ if [ -z "$UMDK_SOURCE" ]; then
         "$REPO_DIR/build_vendored/_deps/urma-src" \
         "$REPO_DIR/build_mock/_deps/urma-src")"; then
         UMDK_SOURCE="$BUNDLE_DIR/source-downloads/urma"
-        clone_fixed_source "UMDK" "$UMDK_REPOSITORY" \
-            "$UMDK_EXPECTED_TAG" "$UMDK_SOURCE"
+        clone_fixed_source "UMDK" "$UMDK_EXPECTED_TAG" \
+            "$UMDK_EXPECTED_COMMIT" "$UMDK_SOURCE" \
+            "${UMDK_REPOSITORIES[@]}"
     fi
 fi
 
