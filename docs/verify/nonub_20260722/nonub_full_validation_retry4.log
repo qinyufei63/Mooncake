@@ -1,0 +1,411 @@
+============================================================
+  Mooncake UbDiag v1.2 集成验证
+  时间: 2026-07-22 20:48:13
+  传输协议: PROTOCOL=tcp USE_UB=OFF DEVICE_NAME=
+============================================================
+  OK: Mooncake/benchmark/RPM 构建工具链已确认
+
+[0/8] 准备工作区...
+  REUSE_BUILD=1: 复用现有源码和两层构建产物
+  验证结果目录: /home/validator/mooncake_nonub_validation/results/nonub_full_retry4_20260722
+/mnt/c/msys64/mingw64/bin/gettext.sh: line 89: gettext: command not found
+/mnt/c/msys64/mingw64/bin/gettext.sh: line 89: envsubst: command not found
+/mnt/c/msys64/mingw64/bin/gettext.sh: line 89: envsubst: command not found
+  OK: pybind11/yalantinglibs 子模块已初始化
+  OK: FindUbDiag.cmake 存在
+  OK: 4 个 benchmark helper 均存在
+  配置的 ubdiag 仓库与版本:
+#   -DMOONCAKE_UBDIAG_GIT_TAG=<tag/branch/commit>  指定 ubdiag 版本
+#   -DMOONCAKE_UBDIAG_SOURCE_DIR=/path/to/ubdiag  离线模式指定本地源码
+
+--
+set(MOONCAKE_UBDIAG_GIT_REPOSITORY
+    "https://github.com/LinQuickDev/ubdiag.git"
+    CACHE STRING "ubdiag Git repository")
+set(MOONCAKE_UBDIAG_GIT_TAG
+    "v0.5.1"
+    CACHE STRING "ubdiag 版本(tag/branch/commit)")
+--
+      GIT_REPOSITORY ${MOONCAKE_UBDIAG_GIT_REPOSITORY}
+      GIT_TAG ${MOONCAKE_UBDIAG_GIT_TAG}
+      SOURCE_DIR "${FETCHCONTENT_BASE_DIR}/ubdiag-src"
+      BINARY_DIR "${FETCHCONTENT_BASE_DIR}/ubdiag-build"
+--
+      "UbDiag ${MOONCAKE_UBDIAG_GIT_TAG} is missing include/ubdiag/perf_point.h")
+  endif()
+  file(STRINGS "${_MOONCAKE_UBDIAG_PERF_POINT_HEADER}"
+--
+      "UbDiag ${MOONCAKE_UBDIAG_GIT_TAG} does not support UBDIAG_DISABLE. "
+      "Select an UbDiag release that contains the compile-time disabled PerfPoint implementation.")
+  endif()
+--
+    GIT_REPOSITORY ${MOONCAKE_UBDIAG_GIT_REPOSITORY}
+    GIT_TAG ${MOONCAKE_UBDIAG_GIT_TAG})
+endif()
+
+--
+    "UbDiag ${MOONCAKE_UBDIAG_GIT_TAG} did not create both ubdiag_lib and CLI targets")
+endif()
+
+--
+message(STATUS "UbDiag: FetchContent 编译 ${MOONCAKE_UBDIAG_GIT_TAG}(库+CLI)")
+
+============================================================
+[1/8] Layer 0: DISABLE 模式 cmake 配置
+============================================================
+  REUSE_BUILD=1: 复用构建目录，仅重新执行 DISABLE 模式 CMake 配置
+CMAKE_BUILD_TYPE: Release
+-- [limit_jobs] Available memory: 15442 MB, CPU cores: 28
+-- [limit_jobs] Compile jobs: 10 (1500 MB/job), Link jobs: 3 (4000 MB/job)
+-- [limit_jobs] Ninja job pools: compile=10, link=3
+-- Event-driven completion is disabled
+-- Http as metadata server support is enabled
+-- metrics is enabled
+YLT is imported by find_package
+-- -------------YLT CONFIG SETTING-------------
+-- YLT_ENABLE_DL: ON
+-- YLT_ENABLE_SSL: OFF
+-- YLT_ENABLE_NTLS: OFF
+-- YLT_ENABLE_PMR: OFF
+-- YLT_ENABLE_IO_URING: OFF
+-- YLT_ENABLE_STRUCT_PACK_UNPORTABLE_TYPE: OFF
+-- YLT_ENABLE_STRUCT_PACK_OPTIMIZE: OFF
+-- --------------------------------------------
+-- pybind11 v2.13.6
+-- USE_NOF=OFF, NoF SSD pool support is disabled
+-- Found ASIO at: /home/validator/mooncake_nonub_validation/.mooncake-ubdiag-validation-prefix/include
+-- UbDiag: UBDIAG_DISABLE(空函数,零依赖)
+-- CUDA: Disabled
+-- ROCm/HIP: Disabled
+-- Sunrise/Tang: Disabled
+-- Mooncake Store will be built
+-- Store HA backends are disabled
+-- AWS SDK not found, S3 functionality will be disabled
+-- Found xxHash: include=/usr/include lib=/usr/lib64/libxxhash.so
+-- io_uring: Enabled for mooncake_store
+/usr/lib64/python3.11/site-packages
+/usr/lib64/python3.11/site-packages
+-- Configuring done (20.0s)
+-- Generating done (0.0s)
+-- Build files have been written to: /home/validator/mooncake_nonub_validation/mooncake-v12-verify/build_mock
+-- Event-driven completion is disabled
+-- USE_NOF=OFF, NoF SSD pool support is disabled
+-- Found ASIO at: /home/validator/mooncake_nonub_validation/.mooncake-ubdiag-validation-prefix/include
+-- UbDiag: UBDIAG_DISABLE(空函数,零依赖)
+-- CUDA: Disabled
+-- ROCm/HIP: Disabled
+-- Sunrise/Tang: Disabled
+-- Store HA backends are disabled
+-- AWS SDK not found, S3 functionality will be disabled
+
+[1/8] 检查 FetchContent 拉取的 ubdiag 版本...
+  tag: v0.5.1
+  commit: 705c6c3 !90 merge readme into master
+  commit SHA: 705c6c37da45df2be4bc64c134dca0b7f30b2113
+project(UbDiag VERSION 0.5.0 LANGUAGES CXX)
+constexpr const char* versionString = "0.5.0";
+  OK: ubdiag commit 与 LinQuickDev/ubdiag master 镜像基线一致
+  OK: v0.5.1 包含 UBDIAG_DISABLE 空函数机制
+
+============================================================
+[2/8] Layer 0: DISABLE 模式编译
+============================================================
+  REUSE_BUILD=1: 按新配置增量重编 DISABLE benchmark targets
+ninja: no work to do.
+  OK: mooncake_master 编译成功 (DISABLE 模式)
+mooncake-store/src/mooncake_master: ELF 64-bit LSB executable, x86-64, version 1 (SYSV), dynamically linked, interpreter /lib64/ld-linux-x86-64.so.2, BuildID[sha1]=170ef22db66ee392f5dbb9e7be094025e3640e03, for GNU/Linux 3.2.0, stripped
+
+============================================================
+[3/8] Layer 0: DISABLE 模式 mock 验证
+      确认 PerfPoint 是空函数,运行 mooncake 不产生 ubdiag 输出
+============================================================
+[3/8] 运行 mooncake_master --help (DISABLE 模式,不应有 ubdiag 输出)...
+  OK: mooncake 运行无 ubdiag 输出 (PerfPoint 被编译器优化掉了)
+  OK: DISABLE 模式下无 SHM 创建 (符合预期)
+
+[3/8] 检查二进制是否链接 libubdiag (DISABLE 模式不应该链接)...
+  OK: 3 个 DISABLE 可执行文件均未链接 libubdiag，且不存在 UbDiag:: 符号
+
+[3/8] Layer 0 运行 master/client/write/read benchmark...
+  OK: Layer 0 DISABLE master/client/write/read benchmark 全部通过，read failed=0
+
+============================================================
+[4/8] Layer 1: vendored 模式 cmake 配置
+============================================================
+  REUSE_BUILD=1: 复用构建目录，仅重新执行 vendored 模式 CMake 配置
+CMAKE_BUILD_TYPE: Release
+-- [limit_jobs] Available memory: 15421 MB, CPU cores: 28
+-- [limit_jobs] Compile jobs: 10 (1500 MB/job), Link jobs: 3 (4000 MB/job)
+-- [limit_jobs] Ninja job pools: compile=10, link=3
+-- Event-driven completion is disabled
+-- Http as metadata server support is enabled
+-- metrics is enabled
+YLT is imported by find_package
+-- -------------YLT CONFIG SETTING-------------
+-- YLT_ENABLE_DL: ON
+-- YLT_ENABLE_SSL: OFF
+-- YLT_ENABLE_NTLS: OFF
+-- YLT_ENABLE_PMR: OFF
+-- YLT_ENABLE_IO_URING: OFF
+-- YLT_ENABLE_STRUCT_PACK_UNPORTABLE_TYPE: OFF
+-- YLT_ENABLE_STRUCT_PACK_OPTIMIZE: OFF
+-- --------------------------------------------
+-- pybind11 v2.13.6
+-- USE_NOF=OFF, NoF SSD pool support is disabled
+-- Found ASIO at: /home/validator/mooncake_nonub_validation/.mooncake-ubdiag-validation-prefix/include
+-- UbDiag: FetchContent 编译 v0.5.1(库+CLI)
+-- CUDA: Disabled
+-- ROCm/HIP: Disabled
+-- Sunrise/Tang: Disabled
+-- Mooncake Store will be built
+-- Store HA backends are disabled
+-- AWS SDK not found, S3 functionality will be disabled
+-- Found xxHash: include=/usr/include lib=/usr/lib64/libxxhash.so
+-- io_uring: Enabled for mooncake_store
+/usr/lib64/python3.11/site-packages
+/usr/lib64/python3.11/site-packages
+-- Configuring done (13.9s)
+-- Generating done (0.1s)
+-- Build files have been written to: /home/validator/mooncake_nonub_validation/mooncake-v12-verify/build_vendored
+-- Found ASIO at: /home/validator/mooncake_nonub_validation/.mooncake-ubdiag-validation-prefix/include
+-- UbDiag: FetchContent 编译 v0.5.1(库+CLI)
+-- Build files have been written to: /home/validator/mooncake_nonub_validation/mooncake-v12-verify/build_vendored
+
+[4/8] 检查 FetchContent 拉取的 ubdiag 版本...
+  tag: v0.5.1
+  commit: 705c6c3 !90 merge readme into master
+  commit SHA: 705c6c37da45df2be4bc64c134dca0b7f30b2113
+project(UbDiag VERSION 0.5.0 LANGUAGES CXX)
+  version.h:
+constexpr int versionMajor = 0;
+constexpr int versionMinor = 5;
+constexpr int versionPatch = 0;
+constexpr const char* versionString = "0.5.0";
+  OK: commit 匹配 705c6c37da45df2be4bc64c134dca0b7f30b2113
+
+============================================================
+[5/8] Layer 1: vendored 模式编译
+============================================================
+  REUSE_BUILD=1: 按新配置增量重编 vendored benchmark targets
+[0/2] Re-checking globbed directories...
+ninja: no work to do.
+  OK: mooncake_master 编译成功 (vendored 模式)
+mooncake-store/src/mooncake_master: ELF 64-bit LSB executable, x86-64, version 1 (SYSV), dynamically linked, interpreter /lib64/ld-linux-x86-64.so.2, BuildID[sha1]=e6484bd23d5e853832479aca7e8c2057888156b6, for GNU/Linux 3.2.0, stripped
+
+[5/8] 检查 libubdiag + ubdiag CLI...
+/home/validator/mooncake_nonub_validation/mooncake-v12-verify/build_vendored/_deps/ubdiag-build/src/sdk/libubdiag.so
+/home/validator/mooncake_nonub_validation/mooncake-v12-verify/build_vendored/_deps/ubdiag-build/src/sdk/libubdiag.so.0
+/home/validator/mooncake_nonub_validation/mooncake-v12-verify/build_vendored/_deps/ubdiag-build/src/sdk/libubdiag.so.0.5.0
+  OK: libubdiag 编译成功
+  NOTE: libubdiag.so.0.5.0 中的 0.5.0 是 UbDiag project/ABI 版本，不是 Git tag
+  OK: ubdiag CLI 编译成功
+  CLI absolute path: /home/validator/mooncake_nonub_validation/mooncake-v12-verify/build_vendored/_deps/ubdiag-build/src/cli/ubdiag
+  SDK absolute path: /home/validator/mooncake_nonub_validation/mooncake-v12-verify/build_vendored/_deps/ubdiag-build/src/sdk
+aa1e696704f2deb2796cd1efc7bfacf2b0dd8a2a94a2c5ae06dc8f98617a6371  /home/validator/mooncake_nonub_validation/mooncake-v12-verify/build_vendored/_deps/ubdiag-build/src/cli/ubdiag
+Usage: ubdiag <command> [options]
+
+Options:
+  CLI linked libubdiag:
+  /home/validator/mooncake_nonub_validation/mooncake-v12-verify/build_vendored/_deps/ubdiag-build/src/sdk/libubdiag.so.0
+
+[5/8] 检查 mooncake_master 是否链接了 libubdiag...
+  /home/validator/mooncake_nonub_validation/mooncake-v12-verify/build_vendored/_deps/ubdiag-build/src/sdk/libubdiag.so.0
+  OK: mooncake_master 链接本次构建目录中的 libubdiag
+
+[5/8] 锁定本次构建树中的 ubdiag，不安装、不调用系统 ubdiag...
+ubdiag is not running
+
+============================================================
+[6/8] 版本校验汇总
+============================================================
+  期望 ubdiag tag: v0.5.1
+  期望 ubdiag commit: 705c6c37da45df2be4bc64c134dca0b7f30b2113
+  DISABLE 模式拉取:
+705c6c37da45df2be4bc64c134dca0b7f30b2113
+  vendored 模式拉取:
+705c6c37da45df2be4bc64c134dca0b7f30b2113
+  OK: 两层均命中精确 commit
+
+============================================================
+[7/8] 打点验证 (vendored 模式)
+============================================================
+[7/8] 使用本次构建的 ubdiag 启动采集...
+  /home/validator/mooncake_nonub_validation/mooncake-v12-verify/build_vendored/_deps/ubdiag-build/src/cli/ubdiag
+ubdiag started (SHM: /ubdiag_shm_default)
+ubdiag is running (SHM: /ubdiag_shm_default)
+
+[7/8] Layer 1 运行 master/client/write/read benchmark...
+  OK: Layer 1 vendored master/client/write/read benchmark 全部通过，read failed=0
+
+[7/8] ubdiag show (汇总)...
+ #     Program          Module                                         Point                 Lvl  Ticks     Good      Bad       Not       Total(ns)       Avg(ns)       Min(ns)       Max(ns)       P99(ns)       P999(ns)      P9999(ns)
+ ----  ---------------  ---------------------------------------------  --------------------  ---  --------  --------  --------  --------  --------------  ------------  ------------  ------------  ------------  ------------  ------------
+    1  mooncake_store   client_service.cpp::BatchGet                   FindReplica             3     18096     18096         0         0         3080370           170            26         15179           N/A          3153         15179
+    2  mooncake_store   client_service.cpp::BatchGet                   Submit                  4     18096     18096         0         0      1758569052         97179         10162      38988486           N/A      38988486      38988486
+    3  mooncake_store   client_service.cpp::BatchGet                   Wait                    4     18096     18096         0         0    320185258207      17693703           238     562503301           N/A     560706070     562503301
+    4  mooncake_store   client_service.cpp::Get                        FindReplica             3         5         5         0         0            1564           312           198           458           458           458           458
+    5  mooncake_store   client_service.cpp::Get                        TransferRead            3         5         5         0         0         6629961       1325992       1156944       1687272       1687272       1687272       1687272
+    6  mooncake_store   client_service.cpp::Put                        PutEnd                  3      1000      1000         0         0        96638422         96638         47707        517976        242770        517976        517976
+    7  mooncake_store   client_service.cpp::Put                        PutStart                3      1000      1000         0         0       132009205        132009         53021        773151        327613        609958        773151
+    8  mooncake_store   client_service.cpp::Put                        TransferPut             2      1000      1000         0         0      1165423927       1165423        498531       2247147       1928937       2223493       2247147
+    9  mooncake_store   client_service.cpp::Put                        TransferWrite           3      1000      1000         0         0       934214877        934214        372335       1902802       1598664       1902802       1902802
+   10  mooncake_store   client_service.cpp::TransferData               Submit[G]               4         5         5         0         0          889399        177879         73266        556287        556287        556287        556287
+   11  mooncake_store   client_service.cpp::TransferData               Submit[W]               4      1000      1000         0         0        64057928         64057         25128        366163        149653        244396        366163
+   12  mooncake_store   client_service.cpp::TransferData               TransferData[G]         3         5         5         0         0         6621866       1324373       1156262       1682476       1682476       1682476       1682476
+   13  mooncake_store   client_service.cpp::TransferData               TransferData[W]         3      1000      1000         0         0       933480342        933480        371907       1901936       1597658       1901936       1901936
+   14  mooncake_store   client_service.cpp::TransferData               Wait[G]                 4         5         5         0         0         5719121       1143824       1081388       1209892       1209892       1209892       1209892
+   15  mooncake_store   client_service.cpp::TransferData               Wait[W]                 4      1000      1000         0         0       867779128        867779        317151       1813524       1518000       1813524       1813524
+   16  mooncake_master  master_service.cpp::AllocateAndInsertMetadata  AllocateMemory          2      1000      1000         0         0         2540047          2540           444         95384         19878         95384         95384
+   17  mooncake_master  master_service.cpp::ClientMonitorFunc          ClientMonitorScan       3        40        40         0         0           64440          1611           633          4070          4070          4070          4070
+   18  mooncake_store   real_client.cpp::batch_get_into                BatchGetIntoInternal    2      1131      1131         0         0    322782412742     285395590     189511071     594027765     594027765     594027765     594027765
+   19  mooncake_store   real_client.cpp::batch_get_into_internal       BatchQuery              3      1131      1131         0         0       702433834        621073        204302      34300079      34300079      34300079      34300079
+   20  mooncake_store   real_client.cpp::batch_get_into_internal       MemRead                 3      1131      1131         0         0    322029227966     284729644     189116379     593640774     593640774     593640774     593640774
+   21  mooncake_store   real_client.cpp::batch_get_into_internal       SelectReplica           3     18096     18096         0         0         1129985            62            18          2662           N/A          2662          2662
+   22  mooncake_store   real_client.cpp::get_into                      GetIntoInternal         2         5         5         0         0         7768823       1553764       1235281       2350421       2350421       2350421       2350421
+   23  mooncake_store   real_client.cpp::get_into_internal             MemRead                 3         5         5         0         0         6638081       1327616       1158095       1690217       1690217       1690217       1690217
+   24  mooncake_store   real_client.cpp::get_into_internal             Query                   3         5         5         0         0         1062115        212423         73207        606379        606379        606379        606379
+   25  mooncake_store   real_client.cpp::get_into_internal             SelectReplica           3         5         5         0         0            2452           490           326           912           912           912           912
+   26  mooncake_master  rpc_service.cpp::BatchGetReplicaList           BatchGetReplicaList     1      1131      1131         0         0        42755758         37803          9907        176866        172701        176866        176866
+   27  mooncake_master  rpc_service.cpp::GetReplicaList                GetReplicaList          1         5         5         0         0           43075          8615          2691         13974         13974         13974         13974
+   28  mooncake_master  rpc_service.cpp::MountSegment                  MountSegment            1         1         1         0         0          808952        808952        808952        808952        808952        808952        808952
+   29  mooncake_master  rpc_service.cpp::PutEnd                        PutEnd                  1      1000      1000         0         0         3915279          3915          1214         21188         15557         21188         21188
+   30  mooncake_master  rpc_service.cpp::PutStart                      PutStart                1      1000      1000         0         0        16924842         16924          5447        114667         70560        114667        114667
+   31  mooncake_master  rpc_service.cpp::UnmountSegment                UnmountSegment          1         1         1         0         0          407153        407153        407153        407153        407153        407153        407153
+
+  OK: ubdiag show 捕获到 31 条数据
+  OK: P99/P999/P9999 统计列均存在
+
+[7/8] ubdiag show --perflog (单次探针记录)...
+ Datetime                            PID     TID       CPU    Level  Program         Module.Point                  Cost(ns)
+ ----------------------------------  ------  --------  -----  -----  --------------  ----------------------------  ----------
+ 2026-07-22 20:49:48.048880628          783       809     10      1  mooncake_master  rpc_service.cpp::PutStart.PutStart       25248
+ 2026-07-22 20:49:48.051324004          783       809     10      1  mooncake_master  rpc_service.cpp::PutStart.PutStart       13229
+ 2026-07-22 20:49:48.053730832          783       809     10      1  mooncake_master  rpc_service.cpp::PutStart.PutStart       11274
+ 2026-07-22 20:49:48.056111795          783       809     10      1  mooncake_master  rpc_service.cpp::PutStart.PutStart       17171
+ 2026-07-22 20:49:48.058670928          783       809     10      1  mooncake_master  rpc_service.cpp::PutStart.PutStart       26727
+ 2026-07-22 20:49:48.061262423          783       809     10      1  mooncake_master  rpc_service.cpp::PutStart.PutStart       13511
+ 2026-07-22 20:49:48.063743298          783       809     10      1  mooncake_master  rpc_service.cpp::PutStart.PutStart       12542
+ 2026-07-22 20:49:48.066391556          783       809     10      1  mooncake_master  rpc_service.cpp::PutStart.PutStart       37983
+ 2026-07-22 20:49:48.068810427          783       809     10      1  mooncake_master  rpc_service.cpp::PutStart.PutStart       53308
+ 2026-07-22 20:49:48.071316734          783       809     10      1  mooncake_master  rpc_service.cpp::PutStart.PutStart       11119
+ 2026-07-22 20:49:48.073751641          783       809     10      1  mooncake_master  rpc_service.cpp::PutStart.PutStart       14709
+ 2026-07-22 20:49:48.076124177          783       809     10      1  mooncake_master  rpc_service.cpp::PutStart.PutStart       11721
+ 2026-07-22 20:49:48.078406853          783       809     10      1  mooncake_master  rpc_service.cpp::PutStart.PutStart       25483
+ 2026-07-22 20:49:48.080877441          783       809     10      1  mooncake_master  rpc_service.cpp::PutStart.PutStart       10612
+ 2026-07-22 20:49:48.083172023          783       809     10      1  mooncake_master  rpc_service.cpp::PutStart.PutStart       18932
+ 2026-07-22 20:49:48.085718496          783       809     10      1  mooncake_master  rpc_service.cpp::PutStart.PutStart       14214
+ 2026-07-22 20:49:48.088424883          783       809     10      1  mooncake_master  rpc_service.cpp::PutStart.PutStart       25418
+ 2026-07-22 20:49:48.090889092          783       809     10      1  mooncake_master  rpc_service.cpp::PutStart.PutStart       46507
+ 2026-07-22 20:49:48.093328146          783       809     10      1  mooncake_master  rpc_service.cpp::PutStart.PutStart       10352
+ 2026-07-22 20:49:48.095725784          783       809     10      1  mooncake_master  rpc_service.cpp::PutStart.PutStart        8146
+ 2026-07-22 20:49:48.097991513          783       809     10      1  mooncake_master  rpc_service.cpp::PutStart.PutStart       13626
+ 2026-07-22 20:49:48.100376583          783       809     10      1  mooncake_master  rpc_service.cpp::PutStart.PutStart       17565
+ 2026-07-22 20:49:48.102564396          783       809     10      1  mooncake_master  rpc_service.cpp::PutStart.PutStart        8424
+ 2026-07-22 20:49:48.104829911          783       809     10      1  mooncake_master  rpc_service.cpp::PutStart.PutStart       35416
+ 2026-07-22 20:49:48.107315905          783       809     10      1  mooncake_master  rpc_service.cpp::PutStart.PutStart       38823
+ 2026-07-22 20:49:48.109530805          783       809     10      1  mooncake_master  rpc_service.cpp::PutStart.PutStart       22219
+ 2026-07-22 20:49:48.111818756          783       809     10      1  mooncake_master  rpc_service.cpp::PutStart.PutStart       48562
+ 2026-07-22 20:49:48.113964616          783       809     10      1  mooncake_master  rpc_service.cpp::PutStart.PutStart       13072
+  OK: PerfLog 捕获到 1892 条单次探针记录
+
+[7/8] ubdiag show --detail (按核)...
+ #     Core  Program          Name                                                          Lvl  Ticks     Good      Bad       Not       Total(ns)       Avg(ns)       Min(ns)       Max(ns)       P99(ns)       P999(ns)      P9999(ns)
+ ----  ----  ---------------  ------------------------------------------------------------  ---  --------  --------  --------  --------  --------------  ------------  ------------  ------------  ------------  ------------  ------------
+    1     0  mooncake_store   client_service.cpp::BatchGet.FindReplica                        3       576       576         0         0           92467           160            30           910           704           691           691
+    2     1  mooncake_store   client_service.cpp::BatchGet.FindReplica                        3       544       544         0         0           91162           167            34          1049           735           722           722
+    3     2  mooncake_store   client_service.cpp::BatchGet.FindReplica                        3      1137      1137         0         0          211008           185            28          2839          1021          1007          1004
+    4     4  mooncake_store   client_service.cpp::BatchGet.FindReplica                        3      1111      1111         0         0          189970           170            29          1207           924           924           924
+    5     7  mooncake_store   client_service.cpp::BatchGet.FindReplica                        3       832       832         0         0          136317           163            27          1041           769           764           764
+    6     8  mooncake_store   client_service.cpp::BatchGet.FindReplica                        3        32        32         0         0            4989           155            29          1008            29            29            29
+    7     9  mooncake_store   client_service.cpp::BatchGet.FindReplica                        3      1114      1114         0         0          197962           177            31          1924           939           939           939
+    8    10  mooncake_store   client_service.cpp::BatchGet.FindReplica                        3      1136      1136         0         0          186958           164            31          1002           871           864           864
+    9    11  mooncake_store   client_service.cpp::BatchGet.FindReplica                        3      1136      1136         0         0          193839           170            30          2621           962           920           917
+   10    13  mooncake_store   client_service.cpp::BatchGet.FindReplica                        3      1136      1136         0         0          185847           163            29          1611           925           925           909
+   11    14  mooncake_store   client_service.cpp::BatchGet.FindReplica                        3      1104      1104         0         0          200946           182            30         15179           895           895           895
+   12    15  mooncake_store   client_service.cpp::BatchGet.FindReplica                        3        32        32         0         0            4810           150            36           305            36            36            36
+   13    16  mooncake_store   client_service.cpp::BatchGet.FindReplica                        3      1136      1136         0         0          197930           174            31          3153          1015          1005          1005
+   14    17  mooncake_store   client_service.cpp::BatchGet.FindReplica                        3       767       767         0         0          125077           163            29          1331           844           842           842
+   15    18  mooncake_store   client_service.cpp::BatchGet.FindReplica                        3      1120      1120         0         0          184100           164            26          1292           949           936           936
+   16    21  mooncake_store   client_service.cpp::BatchGet.FindReplica                        3      1136      1136         0         0          197427           173            30          2292           891           891           886
+   17    22  mooncake_store   client_service.cpp::BatchGet.FindReplica                        3       708       708         0         0          121784           172            31          2304           852           843           843
+   18    23  mooncake_store   client_service.cpp::BatchGet.FindReplica                        3       768       768         0         0          124762           162            35          1113           835           822           822
+   19    25  mooncake_store   client_service.cpp::BatchGet.FindReplica                        3      1136      1136         0         0          193331           170            27          2661           949           949           949
+   20    26  mooncake_store   client_service.cpp::BatchGet.FindReplica                        3       555       555         0         0           96264           173            28          1213           746           746           746
+   21    27  mooncake_store   client_service.cpp::BatchGet.FindReplica                        3       880       880         0         0          143420           162            29          1321           873           859           859
+   22     0  mooncake_store   client_service.cpp::BatchGet.Submit                             4       576       576         0         0        85526962        148484         10229      31809462        123189        122061        122061
+   23     1  mooncake_store   client_service.cpp::BatchGet.Submit                             4       544       544         0         0        20216249         37162         12677        133279         99831         99768         99768
+   24     2  mooncake_store   client_service.cpp::BatchGet.Submit                             4      1137      1137         0         0       112089304         98583         12458      33327805        131842        131842        130349
+   25     4  mooncake_store   client_service.cpp::BatchGet.Submit                             4      1110      1110         0         0        73716632         66411         11093      31299312        137125        129006        129006
+   26     7  mooncake_store   client_service.cpp::BatchGet.Submit                             4       832       832         0         0       128471662        154413         11147      33432238        138216        138216        138216
+   27     8  mooncake_store   client_service.cpp::BatchGet.Submit                             4        32        32         0         0        32323619       1010113         13368      31319785         13368         13368         13368
+   28     9  mooncake_store   client_service.cpp::BatchGet.Submit                             4      1114      1114         0         0        84480846         75835         12744      38988486        144047        138830        138830
+  OK: 选择有数据的 core 0 验证 raw table CSV
+
+[7/8] ubdiag show --sort total:desc...
+ #     Program          Module                                         Point                 Lvl  Ticks     Good      Bad       Not       Total(ns)       Avg(ns)       Min(ns)       Max(ns)       P99(ns)       P999(ns)      P9999(ns)
+ ----  ---------------  ---------------------------------------------  --------------------  ---  --------  --------  --------  --------  --------------  ------------  ------------  ------------  ------------  ------------  ------------
+    1  mooncake_store   real_client.cpp::batch_get_into                BatchGetIntoInternal    2      1131      1131         0         0    322782412742     285395590     189511071     594027765     594027765     594027765     594027765
+    2  mooncake_store   real_client.cpp::batch_get_into_internal       MemRead                 3      1131      1131         0         0    322029227966     284729644     189116379     593640774     593640774     593640774     593640774
+    3  mooncake_store   client_service.cpp::BatchGet                   Wait                    4     18096     18096         0         0    320185258207      17693703           238     562503301           N/A     560706070     562503301
+    4  mooncake_store   client_service.cpp::BatchGet                   Submit                  4     18096     18096         0         0      1758569052         97179         10162      38988486           N/A      38988486      38988486
+    5  mooncake_store   client_service.cpp::Put                        TransferPut             2      1000      1000         0         0      1165423927       1165423        498531       2247147       1928937       2223493       2247147
+    6  mooncake_store   client_service.cpp::Put                        TransferWrite           3      1000      1000         0         0       934214877        934214        372335       1902802       1598664       1902802       1902802
+    7  mooncake_store   client_service.cpp::TransferData               TransferData[W]         3      1000      1000         0         0       933480342        933480        371907       1901936       1597658       1901936       1901936
+    8  mooncake_store   client_service.cpp::TransferData               Wait[W]                 4      1000      1000         0         0       867779128        867779        317151       1813524       1518000       1813524       1813524
+    9  mooncake_store   real_client.cpp::batch_get_into_internal       BatchQuery              3      1131      1131         0         0       702433834        621073        204302      34300079      34300079      34300079      34300079
+   10  mooncake_store   client_service.cpp::Put                        PutStart                3      1000      1000         0         0       132009205        132009         53021        773151        327613        609958        773151
+   11  mooncake_store   client_service.cpp::Put                        PutEnd                  3      1000      1000         0         0        96638422         96638         47707        517976        242770        517976        517976
+   12  mooncake_store   client_service.cpp::TransferData               Submit[W]               4      1000      1000         0         0        64057928         64057         25128        366163        149653        244396        366163
+   13  mooncake_master  rpc_service.cpp::BatchGetReplicaList           BatchGetReplicaList     1      1131      1131         0         0        42755758         37803          9907        176866        172701        176866        176866
+   14  mooncake_master  rpc_service.cpp::PutStart                      PutStart                1      1000      1000         0         0        16924842         16924          5447        114667         70560        114667        114667
+   15  mooncake_store   real_client.cpp::get_into                      GetIntoInternal         2         5         5         0         0         7768823       1553764       1235281       2350421       2350421       2350421       2350421
+   16  mooncake_store   real_client.cpp::get_into_internal             MemRead                 3         5         5         0         0         6638081       1327616       1158095       1690217       1690217       1690217       1690217
+   17  mooncake_store   client_service.cpp::Get                        TransferRead            3         5         5         0         0         6629961       1325992       1156944       1687272       1687272       1687272       1687272
+   18  mooncake_store   client_service.cpp::TransferData               TransferData[G]         3         5         5         0         0         6621866       1324373       1156262       1682476       1682476       1682476       1682476
+
+[7/8] 导出 UbDiag CSV...
+  OK: show CSV 包含数据: /home/validator/mooncake_nonub_validation/results/nonub_full_retry4_20260722/layer1_vendored/csv/show/ubdiag_perfpoint_summary_20260722_205018.csv
+  OK: show CSV 列完整: /home/validator/mooncake_nonub_validation/results/nonub_full_retry4_20260722/layer1_vendored/csv/show/ubdiag_perfpoint_summary_20260722_205018.csv
+  OK: show-detail CSV 包含数据: /home/validator/mooncake_nonub_validation/results/nonub_full_retry4_20260722/layer1_vendored/csv/detail/ubdiag_perfpoint_detail_20260722_205019.csv
+  OK: show-detail CSV 列完整: /home/validator/mooncake_nonub_validation/results/nonub_full_retry4_20260722/layer1_vendored/csv/detail/ubdiag_perfpoint_detail_20260722_205019.csv
+  OK: perflog CSV 包含数据: /home/validator/mooncake_nonub_validation/results/nonub_full_retry4_20260722/layer1_vendored/csv/perflog/ubdiag_perflog_20260722_205019.csv
+  OK: perflog CSV 列完整: /home/validator/mooncake_nonub_validation/results/nonub_full_retry4_20260722/layer1_vendored/csv/perflog/ubdiag_perflog_20260722_205019.csv
+  OK: show-core CSV 包含数据: /home/validator/mooncake_nonub_validation/results/nonub_full_retry4_20260722/layer1_vendored/csv/rawtable/ubdiag_rawtable_20260722_205019.csv
+  OK: watch CSV 包含数据: /home/validator/mooncake_nonub_validation/results/nonub_full_retry4_20260722/layer1_vendored/csv/watch/ubdiag_perfpoint_summary_20260722_205019.csv
+  OK: history CSV 包含数据: /home/validator/mooncake_nonub_validation/results/nonub_full_retry4_20260722/layer1_vendored/csv/history/ubdiag_history_20260722_205026.csv
+
+[7/8] ubdiag stop...
+ubdiag stopped
+
+============================================================
+[8/8] 验证完成
+============================================================
+
+Layer 0 DISABLE 模式:
+  cmake 配置: 1 条 ubdiag 日志
+  mooncake 编译: 成功
+  libubdiag 链接: 0 (应该为 0)
+  UbDiag 实现/引用符号: 0 (应该为 0)
+  SHM 创建: 0 (应该为 0)
+
+Layer 1 vendored 模式:
+  cmake 配置: 1 条 ubdiag 日志
+  mooncake 编译: 成功
+  libubdiag 编译: 3 个文件
+  ubdiag CLI 编译: 成功
+  libubdiag 链接: 1 (应该 >0)
+  ubdiag 汇总数据行: 31
+  ubdiag 按核数据行: 192
+  ubdiag PerfLog 数据行: 1892
+  CSV 文件数: 6
+
+版本校验:
+  期望 tag: v0.5.1
+  实际 tag: v0.5.1
+  期望 commit: 705c6c37da45df2be4bc64c134dca0b7f30b2113
+  实际 commit: 705c6c37da45df2be4bc64c134dca0b7f30b2113
+
+日志:
+  DISABLE cmake:  /home/validator/mooncake_nonub_validation/mooncake-v12-verify/build_mock/cmake_mock.log
+  vendored cmake: /home/validator/mooncake_nonub_validation/mooncake-v12-verify/build_vendored/cmake_vendored.log
+  benchmark/CSV:  /home/validator/mooncake_nonub_validation/results/nonub_full_retry4_20260722

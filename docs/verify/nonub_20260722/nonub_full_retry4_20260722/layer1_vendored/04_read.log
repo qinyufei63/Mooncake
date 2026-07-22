@@ -1,0 +1,39 @@
+READ BENCHMARK: bench=/home/validator/mooncake_nonub_validation/mooncake-v12-verify/build_vendored/mooncake-store/benchmarks/stress_cluster_bench protocol=tcp host=127.0.0.1 keys=1000 duration=20s
+E20260722 20:49:53.949297  1000 transfer_metadata_plugin.cpp:293] GET http://127.0.0.1:8020/metadata?key=mooncake%2Fram%2F127.0.0.1%3A13818 http=404 body: metadata not found
+
+================================================================================
+  SEGMENT READ DURATION BENCHMARK [segments=1]
+================================================================================
+  [t=  5.01s]  interval: 2455.03 MB/s, 613.76 keys/s, 38.36 qps (failed=0)  lat[us]: avg=407306.50, P50=402359.15, P90=575738.45, P99=591291.16  total: 192 queries, 3072 keys, 2455.03 MB/s, 613.76 keys/s, 38.36 qps (failed=0)
+  [t= 10.01s]  interval: 4040.30 MB/s, 1010.08 keys/s, 63.13 qps (failed=0)  lat[us]: avg=253300.08, P50=244011.04, P90=288854.62, P99=321075.80  total: 508 queries, 8128 keys, 3247.69 MB/s, 811.92 keys/s, 50.75 qps (failed=0)
+  [t= 15.02s]  interval: 3912.29 MB/s, 978.07 keys/s, 61.13 qps (failed=0)  lat[us]: avg=261355.37, P50=261919.74, P90=276449.03, P99=293130.42  total: 814 queries, 13024 keys, 3469.23 MB/s, 867.31 keys/s, 54.21 qps (failed=0)
+
+  FINAL SUMMARY
+  Total time:       20.29 s
+  Total queries:    1131 (failed: 0)
+  Total keys:       18096
+  Total data:       70.69 GB
+  Throughput:       3567.81 MB/s (avg: 3469.21 MB/s) (3.48 GB/s)
+  Keys/sec:         891.95
+  Queries/sec:      55.75
+
+  Latency (us)      [n=814, per-query]
+    Min:      189517.54
+    Avg:      292654.07
+    P50:      402359.15
+    P90:      575738.45
+    P99:      591291.16
+    P999:          0.00  (n<1000)
+    P9999:         0.00  (n<10000)
+    Max:      594035.96
+================================================================================
+
+STATUS: PASSED
+/home/validator/mooncake_nonub_validation/results/nonub_full_retry4_20260722/layer1_vendored/read_stdout.log:  [t=  5.01s]  interval: 2455.03 MB/s, 613.76 keys/s, 38.36 qps (failed=0)  lat[us]: avg=407306.50, P50=402359.15, P90=575738.45, P99=591291.16  total: 192 queries, 3072 keys, 2455.03 MB/s, 613.76 keys/s, 38.36 qps (failed=0)
+/home/validator/mooncake_nonub_validation/results/nonub_full_retry4_20260722/layer1_vendored/read_stdout.log:  [t= 10.01s]  interval: 4040.30 MB/s, 1010.08 keys/s, 63.13 qps (failed=0)  lat[us]: avg=253300.08, P50=244011.04, P90=288854.62, P99=321075.80  total: 508 queries, 8128 keys, 3247.69 MB/s, 811.92 keys/s, 50.75 qps (failed=0)
+/home/validator/mooncake_nonub_validation/results/nonub_full_retry4_20260722/layer1_vendored/read_stdout.log:  [t= 15.02s]  interval: 3912.29 MB/s, 978.07 keys/s, 61.13 qps (failed=0)  lat[us]: avg=261355.37, P50=261919.74, P90=276449.03, P99=293130.42  total: 814 queries, 13024 keys, 3469.23 MB/s, 867.31 keys/s, 54.21 qps (failed=0)
+/home/validator/mooncake_nonub_validation/results/nonub_full_retry4_20260722/layer1_vendored/read_stdout.log:  Throughput:       3567.81 MB/s (avg: 3469.21 MB/s) (3.48 GB/s)
+/home/validator/mooncake_nonub_validation/results/nonub_full_retry4_20260722/layer1_vendored/read_stdout.log:    P50:      402359.15
+/home/validator/mooncake_nonub_validation/results/nonub_full_retry4_20260722/layer1_vendored/read_stdout.log:    P99:      591291.16
+/home/validator/mooncake_nonub_validation/results/nonub_full_retry4_20260722/layer1_vendored/read_stdout.log:    P999:          0.00  (n<1000)
+/home/validator/mooncake_nonub_validation/results/nonub_full_retry4_20260722/layer1_vendored/read_stdout.log:    P9999:         0.00  (n<10000)

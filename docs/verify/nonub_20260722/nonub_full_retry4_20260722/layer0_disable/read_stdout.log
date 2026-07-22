@@ -1,0 +1,27 @@
+
+================================================================================
+  SEGMENT READ DURATION BENCHMARK [segments=1]
+================================================================================
+  [t=  5.01s]  interval: 4347.21 MB/s, 1086.80 keys/s, 67.93 qps (failed=0)  lat[us]: avg=230192.24, P50=227709.72, P90=251444.03, P99=286585.37  total: 340 queries, 5440 keys, 4347.21 MB/s, 1086.80 keys/s, 67.93 qps (failed=0)
+  [t= 10.01s]  interval: 4423.78 MB/s, 1105.95 keys/s, 69.12 qps (failed=0)  lat[us]: avg=231236.31, P50=231470.82, P90=246923.10, P99=253439.55  total: 686 queries, 10976 keys, 4385.50 MB/s, 1096.37 keys/s, 68.52 qps (failed=0)
+  [t= 15.02s]  interval: 4436.58 MB/s, 1109.15 keys/s, 69.32 qps (failed=0)  lat[us]: avg=231212.71, P50=231386.89, P90=242881.70, P99=251435.07  total: 1033 queries, 16528 keys, 4402.52 MB/s, 1100.63 keys/s, 68.79 qps (failed=0)
+
+  FINAL SUMMARY
+  Total time:       20.22 s
+  Total queries:    1348 (failed: 0)
+  Total keys:       21568
+  Total data:       84.25 GB
+  Throughput:       4267.20 MB/s (avg: 4402.52 MB/s) (4.17 GB/s)
+  Keys/sec:         1066.80
+  Queries/sec:      66.67
+
+  Latency (us)      [n=1033, per-query]
+    Min:      138852.24
+    Avg:      230884.74
+    P50:      231470.82
+    P90:      251444.03
+    P99:      286585.37
+    P999:          0.00
+    P9999:         0.00  (n<10000)
+    Max:      309060.53
+================================================================================

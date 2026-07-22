@@ -1,0 +1,2 @@
+Starting mooncake_master: /home/validator/mooncake_nonub_validation/mooncake-v12-verify/build_vendored/mooncake-store/src/mooncake_master
+  host=127.0.0.1 master_port=50060 metadata_port=8020 metrics_port=9010

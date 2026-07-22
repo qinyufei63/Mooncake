@@ -1,0 +1,9 @@
+#,Core,Program,Name,Lvl,Ticks,Good,Bad,Not,Total(ns),Avg(ns),Min(ns),Max(ns)
+1,0,mooncake_master,rpc_service.cpp::BatchGetReplicaList.BatchGetReplicaList,1,241,241,0,0,8932308,37063,21201,100565
+2,0,mooncake_store,real_client.cpp::batch_get_into.BatchGetIntoInternal,2,36,36,0,0,11119212619,308867017,218233123,574208037
+3,0,mooncake_store,real_client.cpp::batch_get_into_internal.BatchQuery,3,36,36,0,0,45416318,1261564,239751,34215775
+4,0,mooncake_store,real_client.cpp::batch_get_into_internal.SelectReplica,3,576,576,0,0,35114,60,18,1701
+5,0,mooncake_store,real_client.cpp::batch_get_into_internal.MemRead,3,36,36,0,0,11072208396,307561344,217951496,573912340
+6,0,mooncake_store,client_service.cpp::BatchGet.FindReplica,3,576,576,0,0,92467,160,30,910
+7,0,mooncake_store,client_service.cpp::BatchGet.Submit,4,576,576,0,0,85526962,148484,10229,31809462
+8,0,mooncake_store,client_service.cpp::BatchGet.Wait,4,576,576,0,0,10983981714,19069412,721,534127979
