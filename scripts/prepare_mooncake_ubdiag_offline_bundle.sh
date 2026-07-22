@@ -18,8 +18,9 @@ UMDK_REPOSITORIES=(
     "https://atomgit.com/openeuler/umdk.git"
 )
 RPM_MIRROR_BASE="${RPM_MIRROR_BASE:-https://repo.huaweicloud.com/openeuler}"
-# Pipes make Go fall back after TLS/timeouts as well as 404/410 responses.
-GO_PROXY_CHAIN="${MOONCAKE_GOPROXY:-https://repo.huaweicloud.com/repository/goproxy/|https://goproxy.cn|https://goproxy.io|https://proxy.golang.org|direct}"
+# Keep module acquisition on one mirror. The HTTP fallback is integrity-safe
+# because every downloaded module must match the repository's existing go.sum.
+GO_PROXY_CHAIN="${MOONCAKE_GOPROXY:-https://repo.huaweicloud.com/repository/goproxy/|http://repo.huaweicloud.com/repository/goproxy/}"
 DOWNLOAD_ROUTE=""
 DOWNLOAD_PROXY=""
 DNF_PROXY_ARGS=()
@@ -350,23 +351,34 @@ mkdir -p "$BUNDLE_DIR/go-toolchain"
 tar -C "$BUNDLE_DIR/go-toolchain" -xzf "$BUNDLE_DIR/$GO_TARBALL"
 GO_CA_BUNDLE="$(find_ca_bundle)" || \
     fatal "宿主机缺少可用 CA bundle，无法安全下载 Go 模块"
-echo "Downloading Go modules with failover proxy chain..."
+GO_MODULE_STAGE="$BUNDLE_DIR/go-module-stage"
+rm -rf "$GO_MODULE_STAGE"
+mkdir -p "$GO_MODULE_STAGE"
+cp "$REPO_DIR/mooncake-common/etcd/go.mod" \
+   "$REPO_DIR/mooncake-common/etcd/go.sum" "$GO_MODULE_STAGE/"
+GO_SUM_BEFORE="$(sha256sum "$GO_MODULE_STAGE/go.sum" | awk '{print $1}')"
+echo "Downloading Go modules from the fixed Huawei Cloud mirror..."
 network_exec env \
     SSL_CERT_FILE="$GO_CA_BUNDLE" \
     GOMODCACHE="$BUNDLE_DIR/go-cache/pkg/mod" \
     GOCACHE="$BUNDLE_DIR/go-build" \
     GOTOOLCHAIN=local \
     GOPROXY="$GO_PROXY_CHAIN" \
+    GOSUMDB=off \
     "$BUNDLE_DIR/go-toolchain/go/bin/go" \
-    -C "$REPO_DIR/mooncake-common/etcd" mod download all
+    -C "$GO_MODULE_STAGE" mod download all
+GO_SUM_AFTER="$(sha256sum "$GO_MODULE_STAGE/go.sum" | awk '{print $1}')"
+[ "$GO_SUM_AFTER" = "$GO_SUM_BEFORE" ] || \
+    fatal "Go 模块下载改写了 go.sum，拒绝生成不可复现的离线仓"
 network_exec env \
     SSL_CERT_FILE="$GO_CA_BUNDLE" \
     GOMODCACHE="$BUNDLE_DIR/go-cache/pkg/mod" \
     GOCACHE="$BUNDLE_DIR/go-build" \
     GOTOOLCHAIN=local \
     GOPROXY=off \
+    GOSUMDB=off \
     "$BUNDLE_DIR/go-toolchain/go/bin/go" \
-    -C "$REPO_DIR/mooncake-common/etcd" mod verify
+    -C "$GO_MODULE_STAGE" mod verify
 tar --owner=0 --group=0 --numeric-owner \
     -C "$BUNDLE_DIR/go-cache" -czf "$BUNDLE_DIR/go-module-cache.tar.gz" pkg
 
@@ -397,7 +409,7 @@ EOF
 
 rm -rf "$BUNDLE_DIR/go-toolchain" "$BUNDLE_DIR/go-cache" \
        "$BUNDLE_DIR/go-build" "$BUNDLE_DIR/dnf-root" \
-       "$BUNDLE_DIR/source-downloads"
+       "$BUNDLE_DIR/go-module-stage" "$BUNDLE_DIR/source-downloads"
 
 echo "============================================================"
 echo "PASS: Mooncake UbDiag 离线依赖仓制作完成"
