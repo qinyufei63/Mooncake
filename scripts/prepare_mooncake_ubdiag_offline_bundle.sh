@@ -14,6 +14,7 @@ UBDIAG_REPOSITORY="https://github.com/LinQuickDev/ubdiag.git"
 UMDK_EXPECTED_TAG="v25.12.0.B081"
 UMDK_EXPECTED_COMMIT="a4768b149b6040c11a1c42971addb768a4222b74"
 UMDK_REPOSITORY="https://github.com/openeuler-mirror/umdk.git"
+RPM_MIRROR_BASE="${RPM_MIRROR_BASE:-https://repo.huaweicloud.com/openeuler}"
 
 fatal() {
     echo "FATAL: $*" >&2
@@ -31,6 +32,11 @@ first_git_source() {
     return 1
 }
 
+without_proxy() {
+    env -u http_proxy -u https_proxy -u ftp_proxy -u all_proxy \
+        -u HTTP_PROXY -u HTTPS_PROXY -u FTP_PROXY -u ALL_PROXY "$@"
+}
+
 clone_fixed_source() {
     local name="$1"
     local repository="$2"
@@ -39,7 +45,9 @@ clone_fixed_source() {
     echo "$name 本地源码不存在，宿主机从 $repository 拉取 $ref"
     rm -rf "$destination"
     mkdir -p "$(dirname "$destination")"
-    GIT_TERMINAL_PROMPT=0 git clone \
+    without_proxy env GIT_TERMINAL_PROMPT=0 git \
+        -c http.proxy= -c https.proxy= \
+        -c advice.detachedHead=false clone \
         --branch "$ref" --depth 1 \
         --recurse-submodules --shallow-submodules \
         "$repository" "$destination" || \
@@ -76,7 +84,8 @@ download_go() {
     local url
     for url in "$@"; do
         echo "Downloading Go from $url"
-        if curl -fL --retry 3 --connect-timeout 20 "$url" -o "$output"; then
+        if without_proxy curl --proxy "" -fL --retry 3 \
+             --connect-timeout 20 --max-time 300 "$url" -o "$output"; then
             return 0
         fi
     done
@@ -107,6 +116,21 @@ rm -f "$BUNDLE_DIR"/go*.linux-*.tar.gz \
       "$BUNDLE_DIR"/manifest.env "$BUNDLE_DIR"/SHA256SUMS
 
 docker cp "$CONTAINER_NAME:/etc/yum.repos.d/." "$BUNDLE_DIR/repos/"
+RPM_MIRROR_BASE="${RPM_MIRROR_BASE%/}"
+mapfile -t repo_files < <(find "$BUNDLE_DIR/repos" -maxdepth 1 -type f -name '*.repo' | sort)
+[ "${#repo_files[@]}" -gt 0 ] || fatal "目标容器没有可用的 DNF repo 文件"
+for repo_file in "${repo_files[@]}"; do
+    sed -i -E \
+        -e '/^[[:space:]]*(metalink|mirrorlist)[[:space:]]*=/d' \
+        -e "s#https?://repo\\.openeuler\\.org#${RPM_MIRROR_BASE}#g" \
+        "$repo_file"
+done
+grep -RqsE '^[[:space:]]*baseurl[[:space:]]*=' "$BUNDLE_DIR/repos" || \
+    fatal "镜像转换后没有可用的 baseurl"
+if grep -RqsE '^[[:space:]]*(metalink|mirrorlist)[[:space:]]*=' "$BUNDLE_DIR/repos"; then
+    fatal "repo 文件仍包含 metalink/mirrorlist，拒绝进入长时间重试"
+fi
+echo "RPM mirror: $RPM_MIRROR_BASE"
 CONTAINER_RELEASEVER="$(
     docker exec "$CONTAINER_NAME" sh -c '. /etc/os-release; printf %s "$VERSION_ID"'
 )"
@@ -159,7 +183,9 @@ if grep -Eq '^[-+U]' "$BUNDLE_DIR/submodules.txt"; then
 fi
 
 if ! dnf install --help 2>/dev/null | grep -q -- '--downloadonly'; then
-    dnf install -y dnf-plugins-core
+    without_proxy dnf --setopt=proxy= --setopt='*.proxy=' \
+        --setopt=timeout=20 --setopt=retries=1 \
+        install -y dnf-plugins-core
 fi
 mapfile -t packages < <(
     sed -e 's/[[:space:]]*#.*$//' -e '/^[[:space:]]*$/d' "$PACKAGE_FILE"
@@ -168,11 +194,25 @@ mapfile -t packages < <(
 
 echo "Downloading ${#packages[@]} package/group roots and all dependencies..."
 mkdir -p "$BUNDLE_DIR/dnf-root"
-dnf --installroot="$BUNDLE_DIR/dnf-root" \
-    --releasever="$CONTAINER_RELEASEVER" \
-    --setopt="reposdir=$BUNDLE_DIR/repos" \
-    --setopt=gpgcheck=0 \
-    --setopt=localpkg_gpgcheck=0 \
+REPO_PROBE_URL="${RPM_MIRROR_BASE}/openEuler-24.03-LTS-SP3/OS/${CONTAINER_ARCH}/repodata/repomd.xml"
+without_proxy curl --proxy "" -fL --retry 1 --connect-timeout 10 \
+    --max-time 20 --range 0-0 -o /dev/null "$REPO_PROBE_URL" || \
+    fatal "宿主机无法直连 openEuler SP3 镜像: $REPO_PROBE_URL"
+
+DNF_RESOLVE_ARGS=(
+    --installroot="$BUNDLE_DIR/dnf-root"
+    --releasever="$CONTAINER_RELEASEVER"
+    --setopt="reposdir=$BUNDLE_DIR/repos"
+    --setopt=gpgcheck=0
+    --setopt=localpkg_gpgcheck=0
+    --setopt=proxy=
+    --setopt='*.proxy='
+    --setopt=timeout=20
+    --setopt=retries=1
+)
+without_proxy dnf "${DNF_RESOLVE_ARGS[@]}" makecache --refresh \
+    2>&1 | tee "$BUNDLE_DIR/logs/dnf-makecache.log"
+without_proxy dnf "${DNF_RESOLVE_ARGS[@]}" \
     install -y --downloadonly --downloaddir="$BUNDLE_DIR/rpms" \
     "${packages[@]}" \
     2>&1 | tee "$BUNDLE_DIR/logs/dnf-download.log"
@@ -200,16 +240,18 @@ download_go "$BUNDLE_DIR/$GO_TARBALL" \
 rm -rf "$BUNDLE_DIR/go-toolchain"
 mkdir -p "$BUNDLE_DIR/go-toolchain"
 tar -C "$BUNDLE_DIR/go-toolchain" -xzf "$BUNDLE_DIR/$GO_TARBALL"
-GOMODCACHE="$BUNDLE_DIR/go-cache/pkg/mod" \
-GOCACHE="$BUNDLE_DIR/go-build" \
-GOTOOLCHAIN=local \
-GOPROXY="${GOPROXY:-https://goproxy.cn,https://goproxy.io,direct}" \
+without_proxy env \
+    GOMODCACHE="$BUNDLE_DIR/go-cache/pkg/mod" \
+    GOCACHE="$BUNDLE_DIR/go-build" \
+    GOTOOLCHAIN=local \
+    GOPROXY="${GOPROXY:-https://goproxy.cn,https://goproxy.io,direct}" \
     "$BUNDLE_DIR/go-toolchain/go/bin/go" \
     -C "$REPO_DIR/mooncake-common/etcd" mod download all
-GOMODCACHE="$BUNDLE_DIR/go-cache/pkg/mod" \
-GOCACHE="$BUNDLE_DIR/go-build" \
-GOTOOLCHAIN=local \
-GOPROXY=off \
+without_proxy env \
+    GOMODCACHE="$BUNDLE_DIR/go-cache/pkg/mod" \
+    GOCACHE="$BUNDLE_DIR/go-build" \
+    GOTOOLCHAIN=local \
+    GOPROXY=off \
     "$BUNDLE_DIR/go-toolchain/go/bin/go" \
     -C "$REPO_DIR/mooncake-common/etcd" mod verify
 tar --owner=0 --group=0 --numeric-owner \
