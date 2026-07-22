@@ -18,6 +18,9 @@ UMDK_REPOSITORIES=(
     "https://atomgit.com/openeuler/umdk.git"
 )
 RPM_MIRROR_BASE="${RPM_MIRROR_BASE:-https://repo.huaweicloud.com/openeuler}"
+DOWNLOAD_ROUTE=""
+DOWNLOAD_PROXY=""
+DNF_PROXY_ARGS=()
 
 fatal() {
     echo "FATAL: $*" >&2
@@ -38,6 +41,81 @@ first_git_source() {
 without_proxy() {
     env -u http_proxy -u https_proxy -u ftp_proxy -u all_proxy \
         -u HTTP_PROXY -u HTTPS_PROXY -u FTP_PROXY -u ALL_PROXY "$@"
+}
+
+network_exec() {
+    if [ "$DOWNLOAD_ROUTE" = "proxy" ]; then
+        without_proxy env \
+            http_proxy="$DOWNLOAD_PROXY" https_proxy="$DOWNLOAD_PROXY" \
+            HTTP_PROXY="$DOWNLOAD_PROXY" HTTPS_PROXY="$DOWNLOAD_PROXY" \
+            "$@"
+    else
+        without_proxy "$@"
+    fi
+}
+
+http_curl() {
+    if [ "$DOWNLOAD_ROUTE" = "proxy" ]; then
+        without_proxy curl --proxy "$DOWNLOAD_PROXY" "$@"
+    else
+        without_proxy curl --proxy "" "$@"
+    fi
+}
+
+select_download_route() {
+    local probe_url="$1"
+    local candidate existing duplicate index=0
+    local proxy_candidates=()
+
+    add_proxy_candidate() {
+        candidate="$1"
+        [ -n "$candidate" ] || return 0
+        duplicate=0
+        for existing in "${proxy_candidates[@]}"; do
+            [ "$existing" = "$candidate" ] && duplicate=1 && break
+        done
+        [ "$duplicate" -eq 1 ] || proxy_candidates+=("$candidate")
+    }
+
+    add_proxy_candidate "${MOONCAKE_DOWNLOAD_PROXY:-}"
+    add_proxy_candidate "$(git config --get-urlmatch http.proxy "$RPM_MIRROR_BASE" 2>/dev/null || true)"
+    add_proxy_candidate "$(git config --get-urlmatch http.proxy https://github.com 2>/dev/null || true)"
+    add_proxy_candidate "$(git config --get http.proxy 2>/dev/null || true)"
+    add_proxy_candidate "${https_proxy:-}"
+    add_proxy_candidate "${HTTPS_PROXY:-}"
+    add_proxy_candidate "${http_proxy:-}"
+    add_proxy_candidate "${HTTP_PROXY:-}"
+    add_proxy_candidate "${all_proxy:-}"
+    add_proxy_candidate "${ALL_PROXY:-}"
+
+    for candidate in "${proxy_candidates[@]}"; do
+        index=$((index + 1))
+        echo "Testing download proxy candidate #$index..."
+        if without_proxy curl --proxy "$candidate" -fsSL --retry 0 \
+             --connect-timeout 8 --max-time 15 --range 0-0 \
+             -o /dev/null "$probe_url"; then
+            DOWNLOAD_ROUTE=proxy
+            DOWNLOAD_PROXY="$candidate"
+            DNF_PROXY_ARGS=(
+                --setopt="proxy=$DOWNLOAD_PROXY"
+                --setopt="*.proxy=$DOWNLOAD_PROXY"
+            )
+            echo "Download route: validated proxy candidate #$index"
+            return 0
+        fi
+    done
+
+    echo "Configured proxy candidates unavailable; testing direct route..."
+    if without_proxy curl --proxy "" -fsSL --retry 0 \
+         --connect-timeout 8 --max-time 15 --range 0-0 \
+         -o /dev/null "$probe_url"; then
+        DOWNLOAD_ROUTE=direct
+        DNF_PROXY_ARGS=(--setopt=proxy= --setopt='*.proxy=')
+        echo "Download route: direct"
+        return 0
+    fi
+
+    fatal "宿主机没有可用的 openEuler 下载链路；请设置 MOONCAKE_DOWNLOAD_PROXY，或在其他同架构联网主机制作离线仓"
 }
 
 clone_fixed_source() {
@@ -98,7 +176,7 @@ download_go() {
     local url
     for url in "$@"; do
         echo "Downloading Go from $url"
-        if without_proxy curl --proxy "" -fL --retry 3 \
+        if http_curl -fL --retry 3 \
              --connect-timeout 20 --max-time 300 "$url" -o "$output"; then
             return 0
         fi
@@ -198,8 +276,11 @@ if grep -Eq '^[-+U]' "$BUNDLE_DIR/submodules.txt"; then
     fatal "Mooncake 子模块未完整初始化或不在记录版本"
 fi
 
+REPO_PROBE_URL="${RPM_MIRROR_BASE}/openEuler-24.03-LTS-SP3/OS/${CONTAINER_ARCH}/repodata/repomd.xml"
+select_download_route "$REPO_PROBE_URL"
+
 if ! dnf install --help 2>/dev/null | grep -q -- '--downloadonly'; then
-    without_proxy dnf --setopt=proxy= --setopt='*.proxy=' \
+    without_proxy dnf "${DNF_PROXY_ARGS[@]}" \
         --setopt=timeout=20 --setopt=retries=1 \
         install -y dnf-plugins-core
 fi
@@ -210,19 +291,13 @@ mapfile -t packages < <(
 
 echo "Downloading ${#packages[@]} package/group roots and all dependencies..."
 mkdir -p "$BUNDLE_DIR/dnf-root"
-REPO_PROBE_URL="${RPM_MIRROR_BASE}/openEuler-24.03-LTS-SP3/OS/${CONTAINER_ARCH}/repodata/repomd.xml"
-without_proxy curl --proxy "" -fL --retry 1 --connect-timeout 10 \
-    --max-time 20 --range 0-0 -o /dev/null "$REPO_PROBE_URL" || \
-    fatal "宿主机无法直连 openEuler SP3 镜像: $REPO_PROBE_URL"
-
 DNF_RESOLVE_ARGS=(
     --installroot="$BUNDLE_DIR/dnf-root"
     --releasever="$CONTAINER_RELEASEVER"
     --setopt="reposdir=$BUNDLE_DIR/repos"
     --setopt=gpgcheck=0
     --setopt=localpkg_gpgcheck=0
-    --setopt=proxy=
-    --setopt='*.proxy='
+    "${DNF_PROXY_ARGS[@]}"
     --setopt=timeout=20
     --setopt=retries=1
 )
@@ -256,14 +331,14 @@ download_go "$BUNDLE_DIR/$GO_TARBALL" \
 rm -rf "$BUNDLE_DIR/go-toolchain"
 mkdir -p "$BUNDLE_DIR/go-toolchain"
 tar -C "$BUNDLE_DIR/go-toolchain" -xzf "$BUNDLE_DIR/$GO_TARBALL"
-without_proxy env \
+network_exec env \
     GOMODCACHE="$BUNDLE_DIR/go-cache/pkg/mod" \
     GOCACHE="$BUNDLE_DIR/go-build" \
     GOTOOLCHAIN=local \
     GOPROXY="${GOPROXY:-https://goproxy.cn,https://goproxy.io,direct}" \
     "$BUNDLE_DIR/go-toolchain/go/bin/go" \
     -C "$REPO_DIR/mooncake-common/etcd" mod download all
-without_proxy env \
+network_exec env \
     GOMODCACHE="$BUNDLE_DIR/go-cache/pkg/mod" \
     GOCACHE="$BUNDLE_DIR/go-build" \
     GOTOOLCHAIN=local \
