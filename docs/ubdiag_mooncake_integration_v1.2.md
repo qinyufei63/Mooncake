@@ -198,12 +198,12 @@ graph TD
 | 维度 | 当前已有方案 | v1.2 新方案 |
 |------|------------|------------|
 | **依赖管理** | git submodule `extern/ubdiag/` | FetchContent 拉源码 |
-| **变量冲突** | 50 行 BUILD_TESTS 保存/恢复 workaround | 无冲突（ubdiag 改名 UBDIAG_BUILD_TESTS） |
-| **include 路径** | 12 行 CMAKE_SOURCE_DIR 漂移修复 | 无需修复（ubdiag 改用 PROJECT_SOURCE_DIR） |
+| **变量冲突** | CACHE 变量保存/恢复 workaround | 函数作用域内关闭 UbDiag tests/examples，不改 Mooncake 的同名选项 |
+| **include 路径** | CMAKE_SOURCE_DIR 漂移修复 | 对 UbDiag targets 补充真实 FetchContent 源码路径 |
 | **系统路径查找** | Layer 2 find_package + CLI 查找 65 行 | 整层删除 |
 | **Mock 机制** | mooncake-common/ubdiag-mock/ 手写 56 行 | UBDIAG_DISABLE（ubdiag 自带 constexpr 空函数） |
 | **接口同步** | mock 和真实接口可能不同步 | 永远同步（同一个头文件 `#ifdef` 切换） |
-| **代码总量** | 239 行 FindUbDiag.cmake + 56 行 mock = 295 行 | 55 行 FindUbDiag.cmake，无 mock 目录 |
+| **维护边界** | Mooncake 同时维护分发逻辑和 mock 头文件 | Mooncake 只维护两层解析，mock 实现由 UbDiag 同一套头文件提供 |
 
 ---
 
@@ -263,7 +263,7 @@ UbDiag 作为 FetchContent 子项目时，`CMAKE_SOURCE_DIR` 会指向 Mooncake 
 
 ### 4.4 通用构建选项隔离
 
-真实模式在引入 UbDiag 前强制关闭 `BUILD_TESTS` 和 `BUILD_EXAMPLES`；DISABLE 模式只 populate 源码，不配置任何 UbDiag target。
+真实模式通过函数作用域临时关闭 UbDiag 的 `BUILD_TESTS` 和 `BUILD_EXAMPLES`，函数返回后 Mooncake 的同名构建选项保持原值；DISABLE 模式只 populate 源码，不配置任何 UbDiag target。
 
 ---
 
@@ -325,29 +325,25 @@ else()
     GIT_TAG ${MOONCAKE_UBDIAG_GIT_TAG})
 endif()
 
-set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
-set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(UBDIAG_BUILD_SHARED ON CACHE BOOL "" FORCE)
 set(ENABLE_PERCENTILE ON CACHE BOOL "" FORCE)
 set(ENABLE_PERFLOG ON CACHE BOOL "" FORCE)
 set(ENABLE_OB_MEMORY OFF CACHE BOOL "" FORCE)
 set(ENABLE_OB_CACHE OFF CACHE BOOL "" FORCE)
 set(ENABLE_MEMPOINT OFF CACHE BOOL "" FORCE)
-FetchContent_MakeAvailable(ubdiag)
+set(UBDIAG_ENABLE_CACHEPOINT OFF CACHE BOOL "" FORCE)
 
-if(TARGET ubdiag_lib)
-  # 兼容当前 ubdiag master 作为 FetchContent 子项目时的源码 include 路径
-  foreach(target ubdiag_logger ubdiag_lib ubdiag_runtime_lib ubdiag_manager_lib)
-    if(TARGET ${target})
-      target_include_directories(${target} PUBLIC
-        $<BUILD_INTERFACE:${ubdiag_SOURCE_DIR}/include>
-        $<BUILD_INTERFACE:${ubdiag_SOURCE_DIR}/src>)
-    endif()
-  endforeach()
-  add_library(UbDiag::ubdiag_lib ALIAS ubdiag_lib)
-  set(MOONCAKE_UBDIAG_ACTIVE_LAYER "vendored" CACHE STRING "" FORCE)
-  message(STATUS "UbDiag: FetchContent 编译 ${MOONCAKE_UBDIAG_GIT_TAG}(库+CLI)")
-endif()
+function(_mooncake_make_ubdiag_available)
+  set(BUILD_TESTS OFF)
+  set(BUILD_EXAMPLES OFF)
+  FetchContent_MakeAvailable(ubdiag)
+  set(ubdiag_SOURCE_DIR "${ubdiag_SOURCE_DIR}" PARENT_SCOPE)
+endfunction()
+_mooncake_make_ubdiag_available()
+
+# 为 UbDiag targets 补充真实 FetchContent 源码 include 路径后创建统一别名
+add_library(UbDiag::ubdiag_lib ALIAS ubdiag_lib)
+set(MOONCAKE_UBDIAG_ACTIVE_LAYER "vendored" CACHE STRING "" FORCE)
 ```
 
 **关键改进**：
@@ -360,14 +356,15 @@ endif()
 
 ## 六、Mooncake 侧改动汇总
 
-| 文件 | 改动 | 行数变化 |
-|------|------|---------|
-| `mooncake-common/FindUbDiag.cmake` | 重写（239行→55行） | -184 |
-| `mooncake-p2p-store/build.sh` | case 路径适配 | ±3 |
-| `.gitmodules` | 删 ubdiag 条目 | -3 |
-| `extern/ubdiag/` | git rm | — |
-| `mooncake-common/ubdiag-mock/` | **删除整个目录**（ubdiag 自带 DISABLE） | -56 |
-| **其余 13 个文件** | **零改动** | 0 |
+| 文件 | 改动 |
+|------|------|
+| `mooncake-common/FindUbDiag.cmake` | 新增两层解析、版本固定、能力裁剪与统一 target |
+| `mooncake-transfer-engine/src/CMakeLists.txt` | 从系统 `find_package` 切换到统一解析入口 |
+| `mooncake-store/src/CMakeLists.txt` | 从系统 `find_package` 切换到统一解析入口 |
+| `mooncake-integration/CMakeLists.txt` | 从系统 `find_package` 切换到统一解析入口 |
+| `mooncake-p2p-store/CMakeLists.txt` | 将解析出的 active layer 传给 Go/C++ 混合构建脚本 |
+| `mooncake-p2p-store/build.sh` | vendored 层链接 `libubdiag`，mock 层保持零链接 |
+| `docs/ubdiag_mooncake_integration_v1.2.md` | 记录架构、构建链路、能力边界和风险 |
 
 ---
 
@@ -403,14 +400,13 @@ endif()
 3. Mooncake 固定拉取 `v0.5.1`；验证脚本再校验其解析后的精确提交。
 4. 保留原始 UbDiag 作者和提交历史。
 
-### Step 2：Mooncake 侧适配（qinyufei63/Mooncake）
+### Step 2：Mooncake 侧适配
 
-1. 删 `.gitmodules` ubdiag 条目 + `extern/ubdiag/`
-2. 删 `mooncake-common/ubdiag-mock/`
-3. 重写 `FindUbDiag.cmake`
-4. 改 `p2p-store/build.sh`
-5. 验证：DISABLE 模式编译通过
-6. 验证：`-DMOONCAKE_ENABLE_UBDIAG=ON` 编译+安装通过
+1. 新增 `mooncake-common/FindUbDiag.cmake` 两层解析入口。
+2. 将 Store、Transfer Engine、Integration 的系统 `find_package` 替换为统一入口。
+3. 向 P2P Store 构建脚本传递 `MOONCAKE_UBDIAG_ACTIVE_LAYER`。
+4. 验证 DISABLE 模式无 `libubdiag` 依赖及 `UbDiag::` 实现/引用符号。
+5. 验证 `-DMOONCAKE_ENABLE_UBDIAG=ON` 同步构建库、CLI 并正常采集数据。
 
 ---
 
@@ -461,7 +457,7 @@ ubdiag show                     # 汇总
 ubdiag show --detail            # 按核详情
 ubdiag watch                    # 持续监控
 ubdiag show --sort total:desc   # 按耗时排序
-ubdiag show --csv -o perf.csv   # 导出 CSV
+ubdiag show --csv ./results     # 导出 CSV 到目录
 ubdiag history -n 10            # 历史快照
 ubdiag stop                     # 销毁 SHM
 ```
@@ -516,6 +512,7 @@ void doWork() {
 | `ENABLE_OB_MEMORY` | OFF | OB 内存追踪 |
 | `ENABLE_OB_CACHE` | OFF | OB 缓存命中率 |
 | `ENABLE_MEMPOINT` | OFF | MemPoint 内存观测 |
+| `UBDIAG_ENABLE_CACHEPOINT` | OFF | CachePoint 函数级缓存观测 |
 | `UBDIAG_ENABLE_INSTALL` | ON | 安装 ubdiag 到系统 |
 
 ### A.9 一键严格验证
