@@ -1,5 +1,10 @@
 # Mooncake 集成 UbDiag 两层分发：逐行代码解读
 
+> 版本范围（2026-07-25）：本文逐行内容对应正式实现基线
+> `5c74cb5f04345213942771223c0aa22cd8f44e7f`。后续提交
+> `687a8ba7` 新增 UbDiag 精确 SHA、洁净源码、子构建标记和 RPM 来源校验；
+> 该增量以 `docs/ubdiag_integration_guide.md` 为准。
+
 > 文档基线
 > Mooncake：`qinyufei63/Mooncake:supercache_dev_ubdiag`
 > 当前 PR commit：`5c74cb5f04345213942771223c0aa22cd8f44e7f`
