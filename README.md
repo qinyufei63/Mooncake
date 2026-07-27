@@ -263,6 +263,18 @@ sudo make install # optional, make it ready to be used by vLLM/SGLang
 
 For custom accelerator backends, Docker deployment, NVMe-oF, EFA, CXL, Redis / HTTP metadata, Rust bindings, or other advanced build options, see the [Build Guide](https://kvcache-ai.github.io/Mooncake/getting_started/build.html).
 
+### Optional UbDiag diagnostics
+
+Mooncake can be built with compile-time-disabled UbDiag PerfPoint calls
+(the default, with no UbDiag runtime dependency) or with a vendored UbDiag
+runtime for percentile, PerfLog, watch, history, and CSV analysis. The enabled
+build produces the UbDiag CLI and shared library from one pinned source commit
+and can package them together with Mooncake in a single RPM.
+
+See the [Mooncake UbDiag integration guide](docs/ubdiag_integration_guide.md)
+for mode selection, source and RPM builds, runtime commands, provenance checks,
+and troubleshooting.
+
 <h2 id="trace">📦 Open Source Trace</h2>
 
 ```json
