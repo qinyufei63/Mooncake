@@ -2,13 +2,13 @@
 set -Eeuo pipefail
 
 EXPECTED_MOONCAKE="4503d375d34feb9452f60fa4b58ddedc794ea7aa"
-EXPECTED_UBDIAG="24c87881b26e7666e3a85f4b9ec64b144f4b00ac"
-EXPECTED_BUNDLE_SHA256="3805ca256e925b324a6b0a1a413821a354b283c3ee7d48677a0d6b0e893fe83d"
+EXPECTED_UBDIAG="15d4fd936291e55ba61e86243e8c4f06affc6578"
+EXPECTED_BUNDLE_SHA256="5fe427bba042988c81b4b0d2fa7e471234c388ba38304694271a49911d9aeffc"
 PROJECT_BASE="/home/q00913006/project"
 MOONCAKE_ROOT="${PROJECT_BASE}/mooncake-pr13-verify"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-UBDIAG_BUNDLE="${SCRIPT_DIR}/ubdiag-24c87881.bundle"
-UBDIAG_SOURCE="${PROJECT_BASE}/ubdiag-24c87881"
+UBDIAG_BUNDLE="${SCRIPT_DIR}/ubdiag-15d4fd93.bundle"
+UBDIAG_SOURCE="${PROJECT_BASE}/ubdiag-15d4fd93"
 
 case "$(hostname -s)" in
     node1)
@@ -62,10 +62,10 @@ test "$(git -C "${UBDIAG_SOURCE}" rev-parse HEAD)" = "${EXPECTED_UBDIAG}" || {
     exit 7
 }
 git -C "${UBDIAG_SOURCE}" status --porcelain --untracked-files=all \
-    > "${PROJECT_BASE}/ubdiag-24c87881.status"
-test ! -s "${PROJECT_BASE}/ubdiag-24c87881.status" || {
+    > "${PROJECT_BASE}/ubdiag-15d4fd93.status"
+test ! -s "${PROJECT_BASE}/ubdiag-15d4fd93.status" || {
     echo "FATAL: UbDiag source is not clean" >&2
-    cat "${PROJECT_BASE}/ubdiag-24c87881.status" >&2
+    cat "${PROJECT_BASE}/ubdiag-15d4fd93.status" >&2
     exit 8
 }
 
@@ -145,11 +145,11 @@ docker exec "${CONTAINER_NAME}" test -x "${UBDIAG_CLI}"
 docker exec "${CONTAINER_NAME}" env \
     LD_LIBRARY_PATH="${UBDIAG_LIB_DIR}:/usr/lib64" \
     "${UBDIAG_CLI}" --version |
-    tee "${PROJECT_BASE}/ubdiag-24c87881-${NODE_ROLE}.version"
+    tee "${PROJECT_BASE}/ubdiag-15d4fd93-${NODE_ROLE}.version"
 grep -q "ubdiag version 0.6.0" \
-    "${PROJECT_BASE}/ubdiag-24c87881-${NODE_ROLE}.version"
-grep -q "build: 24c87881" \
-    "${PROJECT_BASE}/ubdiag-24c87881-${NODE_ROLE}.version"
+    "${PROJECT_BASE}/ubdiag-15d4fd93-${NODE_ROLE}.version"
+grep -q "build: 15d4fd93" \
+    "${PROJECT_BASE}/ubdiag-15d4fd93-${NODE_ROLE}.version"
 
 for relative_binary in "${ROLE_BINARIES[@]}"; do
     binary="${MOONCAKE_ROOT}/build_vendored/${relative_binary}"
