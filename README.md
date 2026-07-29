@@ -266,14 +266,17 @@ For custom accelerator backends, Docker deployment, NVMe-oF, EFA, CXL, Redis / H
 ### Optional UbDiag diagnostics
 
 Mooncake can be built with compile-time-disabled UbDiag PerfPoint calls
-(the default, with no UbDiag runtime dependency) or with a vendored UbDiag
-runtime for percentile, PerfLog, watch, history, and CSV analysis. The enabled
-build produces the UbDiag CLI and shared library from one pinned source commit
-and can package them together with Mooncake in a single RPM.
+(the default, with no UbDiag runtime dependency) or against a separately
+installed system UbDiag package for percentile, PerfLog, watch, history, and
+CSV analysis. The enabled mode requires the system package to provide both the
+shared SDK and a CLI from the same RPM version. Mooncake does not download or
+build the real UbDiag runtime in this mode. Its RPM builder can package the
+selected CLI and shared library together with the instrumented Mooncake
+binaries.
 
 See the [Mooncake UbDiag integration guide](docs/ubdiag_integration_guide.md)
-for mode selection, source and RPM builds, runtime commands, provenance checks,
-and troubleshooting.
+for mode selection, system package requirements, single-RPM packaging,
+installation, runtime commands, and troubleshooting.
 
 <h2 id="trace">📦 Open Source Trace</h2>
 
